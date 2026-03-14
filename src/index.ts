@@ -5,7 +5,10 @@ import { ControllerService } from './controller/index.js';
 import { GLMService } from './llm/glm.js';
 import { NemotronService } from './llm/nemotron.js';
 import { HotMemoryStore } from './memory/hot.js';
+import { VectorMemoryStore } from './memory/vector.js';
+import { MemoryFlush } from './memory/flush.js';
 import { OpenClawAgent } from './executor/openclaw-agent.js';
+import { OpenClawCron } from './executor/openclaw-cron.js';
 import { DiscordAdapter } from './adapters/discord/index.js';
 import { TelegramAdapter } from './adapters/telegram/index.js';
 import { ChatService, ToolService, TaskService, ScheduleService } from './services/index.js';
@@ -21,17 +24,29 @@ async function main() {
   const glm = new GLMService();
   const nemotron = new NemotronService();
   const memory = new HotMemoryStore();
+  const vectorMemory = new VectorMemoryStore(glm);
   const openclaw = new OpenClawAgent();
+  const openclawCron = new OpenClawCron();
   const gateway = new GatewayService();
+
+  // 初始化向量数据库
+  await vectorMemory.init();
+
+  // 初始化记忆归档服务
+  const memoryFlush = new MemoryFlush(memory, vectorMemory);
+  memoryFlush.start();
 
   // 初始化控制器
   const controller = new ControllerService(glm, memory);
 
   // 注册场景处理器
-  controller.registerHandler(SceneType.CHAT, new ChatService());
+  controller.registerHandler(SceneType.CHAT, new ChatService(glm, memory, vectorMemory, memoryFlush));
   controller.registerHandler(SceneType.TOOL, new ToolService());
-  controller.registerHandler(SceneType.TASK, new TaskService(nemotron, openclaw));
-  controller.registerHandler(SceneType.SCHEDULE, new ScheduleService(nemotron, openclaw));
+  controller.registerHandler(SceneType.TASK, new TaskService(nemotron, openclaw, memoryFlush));
+  controller.registerHandler(
+    SceneType.SCHEDULE,
+    new ScheduleService(nemotron, openclaw, openclawCron),
+  );
 
   // 初始化平台适配器
   const activeAdapters: PlatformAdapter[] = [];
@@ -68,6 +83,8 @@ async function main() {
   const shutdown = async (signal: string) => {
     log.info({ signal }, '收到关闭信号，正在优雅关闭...');
     try {
+      memoryFlush.stop();
+      gateway.destroy();
       await Promise.allSettled(activeAdapters.map((adapter) => adapter.stop()));
       log.info('所有服务已关闭');
       process.exit(0);
