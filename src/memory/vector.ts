@@ -3,6 +3,7 @@ import { config } from '../config/index.js';
 import type { VectorMemory, VectorMetadata, RetrievalOptions } from '../types/index.js';
 import { createChildLogger } from '../utils/logger.js';
 import { GLMService } from '../llm/glm.js';
+import { ErrorCode, XiaoyouError } from '../utils/error.js';
 
 const log = createChildLogger('vector-memory');
 
@@ -33,6 +34,9 @@ export class VectorMemoryStore {
       }
     } catch (err) {
       log.error({ err }, '初始化向量数据库失败');
+      throw new XiaoyouError(ErrorCode.INTERNAL, '向量数据库初始化失败', {
+        cause: err instanceof Error ? err : new Error(String(err)),
+      });
     }
   }
 

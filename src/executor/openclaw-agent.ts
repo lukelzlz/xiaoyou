@@ -4,10 +4,8 @@ import { ErrorCode, XiaoyouError } from '../utils/error.js';
 import type {
   CronRule,
   ExecutionPlan,
-  ExecutionStatus,
   PlanResult,
   ScheduleTask,
-  StepResult,
 } from '../types/index.js';
 
 const log = createChildLogger('openclaw-agent');

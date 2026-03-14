@@ -42,7 +42,7 @@ export class GLMService {
   async embed(text: string): Promise<number[]> {
     try {
       const response = await this.client.embeddings.create({
-        model: 'text-embedding-3-small',
+        model: config.glm.embeddingModel,
         input: text,
       });
       return response.data[0]?.embedding ?? [];
@@ -84,9 +84,25 @@ export class GLMService {
     const result = await this.chat(prompt);
 
     try {
-      const parsed = JSON.parse(result) as Intent;
-      return parsed;
-    } catch {
+      const parsed = JSON.parse(result) as Partial<Intent> & { intent?: IntentType };
+      const type = parsed.type ?? parsed.intent;
+
+      if (!type || !Object.values(IntentType).includes(type)) {
+        log.warn({ result, type }, 'LLM 返回了无效的意图类型');
+        return {
+          type: IntentType.CHAT_CASUAL,
+          confidence: 0.3,
+          entities: [],
+        };
+      }
+
+      return {
+        type,
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.3,
+        entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+      };
+    } catch (parseError) {
+      log.warn({ result, parseError }, '意图 JSON 解析失败');
       return {
         type: IntentType.CHAT_CASUAL,
         confidence: 0.3,

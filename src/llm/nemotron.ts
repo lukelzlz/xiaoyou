@@ -75,8 +75,11 @@ export class NemotronService {
 
     try {
       return JSON.parse(result) as ExecutionPlan;
-    } catch {
-      throw new XiaoyouError(ErrorCode.PLAN_INVALID, '无法解析执行计划');
+    } catch (parseError) {
+      log.error({ rawResponse: result.slice(0, 500), parseError }, '执行计划 JSON 解析失败');
+      throw new XiaoyouError(ErrorCode.PLAN_INVALID, '无法解析执行计划', {
+        details: { rawResponse: result.slice(0, 500) },
+      });
     }
   }
 
@@ -101,8 +104,11 @@ export class NemotronService {
 
     try {
       return JSON.parse(result) as CronRule;
-    } catch {
-      throw new XiaoyouError(ErrorCode.PLAN_INVALID, '无法解析 CRON 规则');
+    } catch (parseError) {
+      log.error({ rawResponse: result.slice(0, 500), parseError }, 'CRON 规则 JSON 解析失败');
+      throw new XiaoyouError(ErrorCode.PLAN_INVALID, '无法解析 CRON 规则', {
+        details: { rawResponse: result.slice(0, 500) },
+      });
     }
   }
 }

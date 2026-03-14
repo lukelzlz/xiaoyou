@@ -10,6 +10,7 @@ import { DiscordAdapter } from './adapters/discord/index.js';
 import { TelegramAdapter } from './adapters/telegram/index.js';
 import { ChatService, ToolService, TaskService, ScheduleService } from './services/index.js';
 import { SceneType } from './types/index.js';
+import type { PlatformAdapter } from './types/index.js';
 
 const log = createChildLogger('main');
 
@@ -33,7 +34,8 @@ async function main() {
   controller.registerHandler(SceneType.SCHEDULE, new ScheduleService(nemotron, openclaw));
 
   // 初始化平台适配器
-  const adapters = [];
+  const activeAdapters: PlatformAdapter[] = [];
+  const startPromises: Promise<void>[] = [];
 
   if (config.discord.token) {
     const discord = new DiscordAdapter({
@@ -41,7 +43,8 @@ async function main() {
       gateway,
       controller,
     });
-    adapters.push(discord.start());
+    activeAdapters.push(discord);
+    startPromises.push(discord.start());
   }
 
   if (config.telegram.token) {
@@ -50,15 +53,32 @@ async function main() {
       gateway,
       controller,
     });
-    adapters.push(telegram.start());
+    activeAdapters.push(telegram);
+    startPromises.push(telegram.start());
   }
 
-  if (adapters.length === 0) {
+  if (startPromises.length === 0) {
     log.warn('未配置任何平台适配器，请检查 .env 文件');
     return;
   }
 
-  await Promise.all(adapters);
+  await Promise.all(startPromises);
+
+  // 优雅关闭处理
+  const shutdown = async (signal: string) => {
+    log.info({ signal }, '收到关闭信号，正在优雅关闭...');
+    try {
+      await Promise.allSettled(activeAdapters.map((adapter) => adapter.stop()));
+      log.info('所有服务已关闭');
+      process.exit(0);
+    } catch (error) {
+      log.error({ error }, '关闭过程中发生错误');
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   log.info(`小悠系统已启动 (${config.env} 模式)`);
 }
