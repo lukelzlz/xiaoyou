@@ -396,9 +396,21 @@ sequenceDiagram
 | 规划引擎 | Nemotron-3-Super |
 | 执行引擎 | [OpenClaw Agent](https://docs.openclaw.ai/zh-CN) |
 | 定时调度 | OpenClaw CRON |
-| 短期记忆 | Redis（热记忆存储） |
+| 短期记忆 | 内存热记忆（可扩展 Redis） |
 | 长期记忆 | Qdrant（向量数据库） |
 | 社交平台 | Discord / Telegram |
+
+## 当前实现进展
+
+当前代码已完成文档中核心分层能力的首版落地：
+
+- **网关层**：[`src/gateway/index.ts`](src/gateway/index.ts) 已串联消息解析、多模态提取与限流检查，支持将附件摘要注入消息元数据。
+- **控制层**：[`src/controller/intent.ts`](src/controller/intent.ts)、[`src/controller/router.ts`](src/controller/router.ts)、[`src/controller/context.ts`](src/controller/context.ts) 已拆分实现，分别负责意图识别、优先级路由与会话上下文管理。
+- **服务层**：[`src/services/index.ts`](src/services/index.ts) 已提供聊天、工具、复杂任务、定时任务四类场景服务。
+- **执行层**：[`src/llm/nemotron.ts`](src/llm/nemotron.ts)、[`src/executor/openclaw-agent.ts`](src/executor/openclaw-agent.ts)、[`src/executor/openclaw-cron.ts`](src/executor/openclaw-cron.ts) 已支持计划生成、参数校验、执行状态控制与定时调度。
+- **记忆层**：[`src/memory/hot.ts`](src/memory/hot.ts)、[`src/memory/vector.ts`](src/memory/vector.ts)、[`src/memory/flush.ts`](src/memory/flush.ts) 已支持热记忆、向量检索、任务归档与偏好刷新。
+- **工具层**：[`src/tools/index.ts`](src/tools/index.ts) 已重构为可注册、可发现、可鉴权的 Tool Registry。
+- **测试**：已补充 [`tests/unit/router.test.ts`](tests/unit/router.test.ts)、[`tests/unit/context.test.ts`](tests/unit/context.test.ts)、[`tests/unit/multimodal.test.ts`](tests/unit/multimodal.test.ts) 等单元测试。
 
 ## 文档索引
 

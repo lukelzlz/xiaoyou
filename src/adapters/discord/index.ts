@@ -118,7 +118,7 @@ export class DiscordAdapter implements PlatformAdapter {
         }
       }
 
-      const parsed = this.gateway.parseMessage({
+      const parsed = await this.gateway.parseMessage({
         platform: 'discord',
         channelId: message.channelId,
         userId: message.author.id,

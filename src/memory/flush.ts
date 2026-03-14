@@ -149,23 +149,48 @@ export class MemoryFlush {
   async flushUserPreferences(memory: HotMemory): Promise<void> {
     const preferenceContent = JSON.stringify(memory.userPreferences);
 
+    // 检查是否已存在该用户的偏好记录，如果是，则更新而不是新增
+    let existing: VectorMemory | null = null;
+    try {
+      const results = await this.vectorMemory.retrieve(
+        '用户偏好',
+        {
+          method: 'keyword',
+          topK: 1,
+          threshold: 0.8,
+          filters: { type: 'preference' },
+        },
+        memory.userId,
+      );
+      if (results.length > 0) {
+        existing = results[0];
+      }
+    } catch (error) {
+      log.debug({ error, userId: memory.userId }, '查询现有偏好记录失败，将按新增处理');
+    }
+
     const vectorMemory: VectorMemory = {
-      id: `pref_${memory.userId}_${Date.now()}`,
+      id: existing ? existing.id : `pref_${memory.userId}_${Date.now()}`,
       content: `用户偏好: ${preferenceContent}`,
       embedding: [],
       metadata: {
         type: 'preference',
         userId: memory.userId,
         sessionId: memory.sessionId,
-        importance: 0.8,
-        accessCount: 0,
+        importance: 0.9,
+        accessCount: existing ? existing.metadata.accessCount : 0,
         tags: ['preference', 'user-profile'],
       },
-      createdAt: new Date(),
+      createdAt: existing ? existing.createdAt : new Date(),
     };
 
-    await this.vectorMemory.store(vectorMemory);
-    log.debug({ userId: memory.userId }, '用户偏好已归档');
+    try {
+      await this.vectorMemory.store(vectorMemory);
+      log.debug({ userId: memory.userId, updated: existing !== null }, '用户偏好已归档');
+    } catch (error) {
+      log.warn({ error, userId: memory.userId }, '归档用户偏好失败');
+      throw error;
+    }
   }
 
   /** 归档任务记录到向量数据库 */

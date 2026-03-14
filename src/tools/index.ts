@@ -18,7 +18,103 @@ function splitSentences(input: string): string[] {
     .filter(Boolean);
 }
 
-export class SearchTool {
+export interface ToolDefinition<TParams extends Record<string, unknown> = Record<string, unknown>> {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  requiredPermissions?: string[];
+  timeout?: number;
+  execute(params: TParams): Promise<string>;
+}
+
+export interface ToolExecutionContext {
+  permissions?: string[];
+  timeout?: number;
+}
+
+export class ToolRegistry {
+  private tools = new Map<string, ToolDefinition>();
+
+  register(tool: ToolDefinition): void {
+    this.tools.set(tool.name, tool);
+    log.info({ tool: tool.name }, '工具已注册');
+  }
+
+  unregister(name: string): boolean {
+    const removed = this.tools.delete(name);
+    if (removed) {
+      log.info({ tool: name }, '工具已移除');
+    }
+    return removed;
+  }
+
+  get(name: string): ToolDefinition | null {
+    return this.tools.get(name) ?? null;
+  }
+
+  list(): ToolDefinition[] {
+    return Array.from(this.tools.values());
+  }
+
+  discover(query: string): ToolDefinition[] {
+    const normalized = normalizeInput(query).toLowerCase();
+    return this.list().filter((tool) => {
+      return (
+        tool.name.toLowerCase().includes(normalized) ||
+        tool.description.toLowerCase().includes(normalized)
+      );
+    });
+  }
+
+  async invoke(
+    name: string,
+    params: Record<string, unknown>,
+    context: ToolExecutionContext = {},
+  ): Promise<string> {
+    const tool = this.get(name);
+    if (!tool) {
+      throw new Error(`工具不存在: ${name}`);
+    }
+
+    this.checkPermissions(tool, context.permissions ?? []);
+
+    const timeout = context.timeout ?? tool.timeout ?? 10_000;
+    return this.withTimeout(tool.execute(params), timeout, name);
+  }
+
+  private checkPermissions(tool: ToolDefinition, permissions: string[]): void {
+    if (!tool.requiredPermissions || tool.requiredPermissions.length === 0) {
+      return;
+    }
+
+    const missing = tool.requiredPermissions.filter((permission) => !permissions.includes(permission));
+    if (missing.length > 0) {
+      throw new Error(`工具 ${tool.name} 缺少权限: ${missing.join(', ')}`);
+    }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeout: number, name: string): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => reject(new Error(`工具 ${name} 执行超时 (${timeout}ms)`)), timeout);
+      }),
+    ]);
+  }
+}
+
+export class SearchTool implements ToolDefinition<{ query: string }> {
+  name = 'search';
+  description = '搜索文本中的关键词与链接';
+  parameters = {
+    type: 'object',
+    properties: {
+      query: { type: 'string' },
+    },
+    required: ['query'],
+  };
+  timeout = 8_000;
+
   async execute(params: { query: string }): Promise<string> {
     const query = normalizeInput(params.query);
     log.debug({ query }, '执行搜索');
@@ -42,7 +138,18 @@ export class SearchTool {
   }
 }
 
-export class ExtractTool {
+export class ExtractTool implements ToolDefinition<{ content: string }> {
+  name = 'extract';
+  description = '提取文本中的结构化信息';
+  parameters = {
+    type: 'object',
+    properties: {
+      content: { type: 'string' },
+    },
+    required: ['content'],
+  };
+  timeout = 8_000;
+
   async execute(params: { content: string }): Promise<string> {
     const content = params.content.trim();
     log.debug({ preview: content.slice(0, 100) }, '执行提取');
@@ -69,7 +176,18 @@ export class ExtractTool {
   }
 }
 
-export class QueryTool {
+export class QueryTool implements ToolDefinition<{ query: string }> {
+  name = 'query';
+  description = '执行轻量查询请求';
+  parameters = {
+    type: 'object',
+    properties: {
+      query: { type: 'string' },
+    },
+    required: ['query'],
+  };
+  timeout = 5_000;
+
   async execute(params: { query: string }): Promise<string> {
     const query = normalizeInput(params.query);
     log.debug({ query }, '执行查询');
@@ -91,3 +209,25 @@ export class QueryTool {
     ].join('\n');
   }
 }
+
+export const toolRegistry = new ToolRegistry();
+
+export function registerTool(tool: ToolDefinition): void {
+  toolRegistry.register(tool);
+}
+
+export function discoverTools(query: string): ToolDefinition[] {
+  return toolRegistry.discover(query);
+}
+
+export async function invokeTool(
+  name: string,
+  params: Record<string, unknown>,
+  context?: ToolExecutionContext,
+): Promise<string> {
+  return toolRegistry.invoke(name, params, context);
+}
+
+registerTool(new SearchTool());
+registerTool(new ExtractTool());
+registerTool(new QueryTool());

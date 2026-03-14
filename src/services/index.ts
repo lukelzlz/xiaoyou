@@ -1,5 +1,5 @@
 import { createChildLogger } from '../utils/logger.js';
-import type { Intent, ParsedMessage, TaskDescription } from '../types/index.js';
+import type { EnhancedIntent, ParsedMessage, TaskDescription } from '../types/index.js';
 import { IntentType } from '../types/index.js';
 import { GLMService } from '../llm/glm.js';
 import { NemotronService } from '../llm/nemotron.js';
@@ -8,7 +8,7 @@ import { VectorMemoryStore } from '../memory/vector.js';
 import { MemoryFlush } from '../memory/flush.js';
 import { OpenClawAgent } from '../executor/openclaw-agent.js';
 import { OpenClawCron } from '../executor/openclaw-cron.js';
-import { SearchTool, ExtractTool, QueryTool } from '../tools/index.js';
+import { invokeTool } from '../tools/index.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
 import type { SceneHandler } from '../controller/index.js';
 
@@ -24,7 +24,7 @@ export class ChatService implements SceneHandler {
     private memoryFlush: MemoryFlush,
   ) {}
 
-  async handle(message: ParsedMessage, intent: Intent): Promise<string> {
+  async handle(message: ParsedMessage, intent: EnhancedIntent): Promise<string> {
     // 使用 channelId:userId 组合键，避免群聊中不同用户数据混淆
     const sessionKey = `${message.channelId}:${message.userId}`;
     const hotMemory = await this.memory.get(sessionKey);
@@ -34,10 +34,10 @@ export class ChatService implements SceneHandler {
     let longTermContext = '';
     try {
       const retrieved = await this.vectorMemory.retrieve(message.textContent, {
-        userId: message.userId,
+        method: 'similarity',
         topK: 3,
         threshold: 0.75,
-      });
+      }, message.userId);
       if (retrieved.length > 0) {
         longTermContext = `\n\n相关历史记忆：\n${retrieved.map((r) => r.content).join('\n---\n')}`;
       }
@@ -68,28 +68,26 @@ export class ChatService implements SceneHandler {
 // ============ 场景 B：工具服务 ============
 
 export class ToolService implements SceneHandler {
-  private searchTool = new SearchTool();
-  private extractTool = new ExtractTool();
-  private queryTool = new QueryTool();
-
-  async handle(message: ParsedMessage, intent: Intent): Promise<string> {
+  async handle(message: ParsedMessage, intent: EnhancedIntent): Promise<string> {
     log.info({ intent: intent.type, userId: message.userId }, '工具调用');
 
-    switch (intent.type) {
-      case IntentType.TOOL_SEARCH: {
-        const result = await this.searchTool.execute({ query: message.textContent });
-        return result;
+    try {
+      switch (intent.type) {
+        case IntentType.TOOL_SEARCH:
+          return await invokeTool('search', { query: message.textContent });
+        
+        case IntentType.TOOL_EXTRACT:
+          return await invokeTool('extract', { content: message.textContent });
+          
+        case IntentType.TOOL_QUERY:
+          return await invokeTool('query', { query: message.textContent });
+          
+        default:
+          return '暂不支持该工具请求。';
       }
-      case IntentType.TOOL_EXTRACT: {
-        const result = await this.extractTool.execute({ content: message.textContent });
-        return result;
-      }
-      case IntentType.TOOL_QUERY: {
-        const result = await this.queryTool.execute({ query: message.textContent });
-        return result;
-      }
-      default:
-        return '暂不支持该工具请求。';
+    } catch (error) {
+      log.error({ error, intent: intent.type }, '工具调用失败');
+      return `❌ 工具执行失败: ${error instanceof Error ? error.message : '未知错误'}`;
     }
   }
 }
@@ -103,7 +101,7 @@ export class TaskService implements SceneHandler {
     private memoryFlush: MemoryFlush,
   ) {}
 
-  async handle(message: ParsedMessage, _intent: Intent): Promise<string> {
+  async handle(message: ParsedMessage, _intent: EnhancedIntent): Promise<string> {
     log.info({ userId: message.userId }, '开始处理复杂任务');
 
     const task: TaskDescription = {
@@ -152,7 +150,7 @@ export class ScheduleService implements SceneHandler {
     private cron: OpenClawCron,
   ) {}
 
-  async handle(message: ParsedMessage, intent: Intent): Promise<string> {
+  async handle(message: ParsedMessage, intent: EnhancedIntent): Promise<string> {
     log.info({ intent: intent.type, userId: message.userId }, '处理定时任务请求');
 
     switch (intent.type) {
@@ -177,15 +175,33 @@ export class ScheduleService implements SceneHandler {
     // 1. 使用 Nemotron 将自然语言转换为 CRON 规则
     const rule = await this.planner.generateCronRule(message.textContent);
 
-    // 2. 通过 OpenClaw CRON 注册定时任务
-    const taskId = await this.cron.register(rule, {
-      type: 'scheduled_task',
-      params: {
-        description: message.textContent,
-        userId: message.userId,
-        channelId: message.channelId,
+    // 2. 规划任务执行步骤（复杂任务才附带执行计划）
+    const isComplex = message.textContent.includes('执行') || message.textContent.includes('步');
+    const plan = isComplex
+      ? await this.planner.createPlan({
+          description: message.textContent,
+          type: 'scheduled_automation',
+        })
+      : undefined;
+
+    // 3. 通过 OpenClaw CRON 注册定时任务
+    const taskId = await this.cron.register(
+      rule,
+      {
+        type: 'scheduled_task',
+        params: {
+          description: message.textContent,
+          userId: message.userId,
+          channelId: message.channelId,
+        },
+        ...(plan ? { plan } : {}),
       },
-    });
+      {
+        name: `UserTask_${message.userId.slice(0, 5)}_${Date.now()}`,
+        description: message.textContent,
+        notifyOnFailure: true,
+      }
+    );
 
     return [
       '✅ 定时任务已创建',
@@ -193,11 +209,11 @@ export class ScheduleService implements SceneHandler {
       `⏰ 规则: ${rule.description}`,
       `🔄 CRON: ${rule.expression}`,
       `🌏 时区: ${rule.timezone}`,
-    ].join('\n');
+      isComplex ? '✨ 已生成复杂执行计划' : '',
+    ].filter(Boolean).join('\n');
   }
 
   private async modifySchedule(message: ParsedMessage): Promise<string> {
-    // 从消息中提取任务 ID（简单实现）
     const idMatch = message.textContent.match(/(?:任务|ID|id)[:\s]*([a-zA-Z0-9_-]+)/);
     if (!idMatch) {
       return '请提供要修改的定时任务 ID，例如：修改任务 task_abc123 的时间为每天上午10点';
@@ -227,20 +243,26 @@ export class ScheduleService implements SceneHandler {
   private async cancelSchedule(message: ParsedMessage): Promise<string> {
     const idMatch = message.textContent.match(/(?:任务|ID|id)[:\s]*([a-zA-Z0-9_-]+)/);
     if (!idMatch) {
-      return '请提供要取消的定时任务 ID，例如：取消任务 task_abc123';
+      return '请提供要取消或暂停的定时任务 ID，例如：取消任务 task_abc123';
     }
 
     const taskId = idMatch[1];
+    const isPause = message.textContent.includes('暂停');
 
     try {
-      await this.cron.cancel(taskId);
-      return `✅ 定时任务 ${taskId} 已取消`;
+      if (isPause) {
+        await this.cron.pause(taskId);
+        return `✅ 定时任务 ${taskId} 已暂停`;
+      } else {
+        await this.cron.cancel(taskId);
+        return `✅ 定时任务 ${taskId} 已取消`;
+      }
     } catch (error) {
-      log.warn({ error, taskId }, '取消定时任务失败');
+      log.warn({ error, taskId }, '操作定时任务失败');
       if (error instanceof XiaoyouError && error.code === ErrorCode.NOT_FOUND) {
         return `❌ 未找到定时任务 ${taskId}，请确认任务 ID 是否正确。`;
       }
-      return `❌ 取消定时任务 ${taskId} 失败，请稍后重试。`;
+      return `❌ 操作定时任务 ${taskId} 失败，请稍后重试。`;
     }
   }
 
@@ -248,15 +270,24 @@ export class ScheduleService implements SceneHandler {
     const tasks = await this.cron.listTasks(message.userId);
 
     if (tasks.length === 0) {
-      return '当前没有活跃的定时任务。';
+      return '当前没有您的定时任务记录。';
     }
 
     const lines = [
       `📋 您的定时任务列表（共 ${tasks.length} 个）：`,
       '',
       ...tasks.map((t, i) => {
-        const next = t.nextExecution ? new Date(t.nextExecution).toLocaleString('zh-CN') : '未知';
-        return `${i + 1}. ID: ${t.id} | 状态: ${t.status} | 下次执行: ${next}`;
+        const next = t.nextExecution ? t.nextExecution.toLocaleString('zh-CN') : '无';
+        const name = t.name || t.id;
+        const statusMap: Record<string, string> = {
+          active: '运行中 🟢',
+          paused: '已暂停 🟡',
+          expired: '已过期 ⚪',
+          cancelled: '已取消 🔴'
+        };
+        const statusStr = statusMap[t.status] || t.status;
+        
+        return `${i + 1}. [${name}] | 状态: ${statusStr} | 下次执行: ${next}\n   规则: ${t.rule.description}`;
       }),
     ];
 

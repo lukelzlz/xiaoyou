@@ -1,16 +1,7 @@
-import type { Attachment } from '../types/index.js';
+import type { Attachment, MultimodalContent } from '../types/index.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('multimodal');
-
-export interface MultimodalContent {
-  type: 'image' | 'document' | 'audio' | 'video';
-  url: string;
-  extractedText?: string;
-  labels?: string[];
-  confidence?: number;
-  metadata?: Record<string, unknown>;
-}
 
 export interface OCRResult {
   text: string;

@@ -87,7 +87,7 @@ export class TelegramAdapter implements PlatformAdapter {
         }
       }
 
-      const parsed = this.gateway.parseMessage({
+      const parsed = await this.gateway.parseMessage({
         platform: 'telegram',
         channelId: String(message.chat.id),
         userId,

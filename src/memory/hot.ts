@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 import { config } from '../config/index.js';
-import type { ConversationTurn, HotMemory, UserPreferences } from '../types/index.js';
+import type { ActiveTask, ConversationTurn, HotMemory, UserPreferences } from '../types/index.js';
 
 const defaultPreferences: UserPreferences = {
   language: 'zh-CN',
@@ -79,6 +79,78 @@ export class HotMemoryStore {
         ...memory.userPreferences,
         ...preferences,
       },
+      lastUpdated: new Date(),
+    });
+  }
+
+  // ============ 活动任务跟踪 ============
+
+  async addActiveTask(sessionId: string, userId: string, task: ActiveTask): Promise<void> {
+    const memory = await this.ensure(sessionId, userId);
+    const tasks = [...memory.activeTasks.filter((t) => t.taskId !== task.taskId), task];
+
+    await this.set({
+      ...memory,
+      activeTasks: tasks,
+      lastUpdated: new Date(),
+    });
+  }
+
+  async updateTaskProgress(sessionId: string, userId: string, taskId: string, progress: number, status?: string): Promise<void> {
+    const memory = await this.ensure(sessionId, userId);
+    const tasks = memory.activeTasks.map((t) =>
+      t.taskId === taskId ? { ...t, progress, status: status ?? t.status } : t,
+    );
+
+    await this.set({
+      ...memory,
+      activeTasks: tasks,
+      lastUpdated: new Date(),
+    });
+  }
+
+  async removeActiveTask(sessionId: string, userId: string, taskId: string): Promise<void> {
+    const memory = await this.ensure(sessionId, userId);
+    const tasks = memory.activeTasks.filter((t) => t.taskId !== taskId);
+
+    await this.set({
+      ...memory,
+      activeTasks: tasks,
+      lastUpdated: new Date(),
+    });
+  }
+
+  async getActiveTasks(sessionId: string): Promise<ActiveTask[]> {
+    const memory = await this.get(sessionId);
+    return memory?.activeTasks ?? [];
+  }
+
+  // ============ 上下文变量管理 ============
+
+  async setContextVariable(sessionId: string, userId: string, key: string, value: unknown): Promise<void> {
+    const memory = await this.ensure(sessionId, userId);
+
+    await this.set({
+      ...memory,
+      contextVariables: {
+        ...memory.contextVariables,
+        [key]: value,
+      },
+      lastUpdated: new Date(),
+    });
+  }
+
+  async getContextVariable(sessionId: string, key: string): Promise<unknown> {
+    const memory = await this.get(sessionId);
+    return memory?.contextVariables[key];
+  }
+
+  async clearContextVariables(sessionId: string, userId: string): Promise<void> {
+    const memory = await this.ensure(sessionId, userId);
+
+    await this.set({
+      ...memory,
+      contextVariables: {},
       lastUpdated: new Date(),
     });
   }

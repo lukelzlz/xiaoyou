@@ -75,6 +75,16 @@ export interface RawMessage {
   replyTo?: string;
 }
 
+// 多模态内容
+export interface MultimodalContent {
+  type: 'image' | 'document' | 'audio' | 'video';
+  url: string;
+  extractedText?: string;
+  labels?: string[];
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+}
+
 // 解析后的消息
 export interface ParsedMessage {
   id: string;
@@ -85,11 +95,13 @@ export interface ParsedMessage {
   textContent: string;
   entities: Entity[];
   attachments: Attachment[];
+  multimodalContents?: MultimodalContent[];
   timestamp: Date;
   metadata: {
     platform: Platform;
     guildId?: string;
     replyTo?: string;
+    multimodalSummary?: string;
   };
 }
 
@@ -295,6 +307,30 @@ export interface PlanConstraints {
   forbiddenActions?: string[];
 }
 
+// 计划校验结果
+export interface ValidationResult {
+  valid: boolean;
+  missingParams: MissingParam[];
+  warnings: string[];
+}
+
+// 缺失参数描述
+export interface MissingParam {
+  stepId: string;
+  paramName: string;
+  description: string;
+  type: string;
+  required: boolean;
+}
+
+// 追问问题
+export interface ClarificationQuestion {
+  question: string;
+  context: string;
+  missingParams: MissingParam[];
+  suggestions?: string[];
+}
+
 // 执行状态
 export interface ExecutionStatus {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_user';
@@ -313,4 +349,135 @@ export interface PlatformAdapter {
   stop(): Promise<void>;
   sendMessage(channelId: string, content: ResponseContent): Promise<void>;
   sendTyping(channelId: string): Promise<void>;
+}
+
+// ============ 控制层增强类型 ============
+
+// 情绪类型
+export type SentimentType = 'positive' | 'negative' | 'neutral' | 'mixed';
+
+// 情绪分析结果
+export interface Sentiment {
+  type: SentimentType;
+  score: number;
+  labels?: string[];
+}
+
+// 增强的意图识别结果
+export interface EnhancedIntent extends Intent {
+  sentiment?: Sentiment;
+  rawResponse?: string;
+}
+
+// 路由条件
+export interface RoutingCondition {
+  requiresPlanning?: boolean;
+  minConfidence?: number;
+  hasAttachments?: boolean;
+  custom?: (intent: EnhancedIntent, message: ParsedMessage) => boolean;
+}
+
+// 路由规则
+export interface RoutingRule {
+  intent: IntentType | IntentType[];
+  scene: SceneType;
+  priority: number;
+  condition?: RoutingCondition;
+  description?: string;
+}
+
+// 会话上下文
+export interface SessionContext {
+  sessionId: string;
+  userId: string;
+  channelId: string;
+  platform: Platform;
+  createdAt: Date;
+  lastActiveAt: Date;
+  variables: Record<string, unknown>;
+  pendingAction?: {
+    type: string;
+    data: Record<string, unknown>;
+    expiresAt: Date;
+  };
+  metadata: Record<string, unknown>;
+}
+
+// 上下文管理器接口
+export interface ContextManager {
+  get(sessionId: string): Promise<SessionContext | null>;
+  getOrCreate(sessionId: string, userId: string, channelId: string, platform: Platform): Promise<SessionContext>;
+  setVariable(sessionId: string, key: string, value: unknown): Promise<void>;
+  getVariable(sessionId: string, key: string): Promise<unknown>;
+  setPendingAction(sessionId: string, action: SessionContext['pendingAction']): Promise<void>;
+  clearPendingAction(sessionId: string): Promise<void>;
+  touch(sessionId: string): Promise<void>;
+}
+
+// 场景处理器接口
+export interface SceneHandler {
+  handle(message: ParsedMessage, intent: EnhancedIntent): Promise<string>;
+}
+
+// 执行控制动作
+export type ControlAction = 'pause' | 'resume' | 'cancel' | 'retry';
+
+// 检索策略
+export interface RetrievalStrategy {
+  method: 'similarity' | 'keyword' | 'hybrid';
+  topK: number;
+  threshold: number;
+  timeRange?: {
+    start: Date;
+    end: Date;
+  };
+  filters?: Record<string, unknown>;
+}
+
+// 错误分类
+export enum ErrorCategory {
+  USER_INPUT = 'user_input',
+  USER_CANCEL = 'user_cancel',
+  INTERNAL = 'internal',
+  TIMEOUT = 'timeout',
+  RATE_LIMIT = 'rate_limit',
+  LLM_ERROR = 'llm_error',
+  TOOL_ERROR = 'tool_error',
+  PLATFORM_ERROR = 'platform_error',
+  RESOURCE_EXHAUSTED = 'resource_exhausted',
+  STORAGE_ERROR = 'storage_error',
+}
+
+// 日志条目
+export interface LogEntry {
+  timestamp: Date;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  component: string;
+  action: string;
+  userId?: string;
+  sessionId?: string;
+  taskId?: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+  error?: Error;
+}
+
+// 监控指标
+export interface MonitoringMetrics {
+  system: {
+    cpuUsage: number;
+    memoryUsage: number;
+    diskUsage: number;
+  };
+  application: {
+    requestCount: number;
+    errorRate: number;
+    avgResponseTime: number;
+    activeUsers: number;
+  };
+  business: {
+    messageCount: number;
+    taskCount: number;
+    taskSuccessRate: number;
+  };
 }
