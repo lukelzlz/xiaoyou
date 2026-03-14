@@ -14,6 +14,7 @@ import { TelegramAdapter } from './adapters/telegram/index.js';
 import { ChatService, ToolService, TaskService, ScheduleService } from './services/index.js';
 import { SceneType } from './types/index.js';
 import type { PlatformAdapter } from './types/index.js';
+import { startHealthServer } from './health.js';
 
 const log = createChildLogger('main');
 
@@ -78,6 +79,9 @@ async function main() {
   }
 
   await Promise.all(startPromises);
+
+  // 启动健康检查 HTTP 服务
+  await startHealthServer();
 
   // 优雅关闭处理
   const shutdown = async (signal: string) => {

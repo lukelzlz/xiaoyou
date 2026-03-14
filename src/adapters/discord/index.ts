@@ -92,18 +92,38 @@ export class DiscordAdapter implements PlatformAdapter {
     if (message.author.bot) return;
 
     try {
+      // 检查速率限制
+      if (!this.gateway.checkRateLimit(message.author.id)) {
+        log.warn({ userId: message.author.id }, 'Discord 用户触发速率限制');
+        await message.reply('您发送消息的速度太快了，请稍后再试。');
+        return;
+      }
+
+      const attachments = [...message.attachments.values()].map((attachment) => ({
+        type: this.getAttachmentType(attachment.contentType ?? ''),
+        url: attachment.url,
+        name: attachment.name ?? 'attachment',
+        mimeType: attachment.contentType ?? undefined,
+        size: attachment.size,
+      }));
+
+      // 提取多模态内容并追加到消息文本中
+      let content = message.content;
+      if (attachments.length > 0) {
+        const multimodalContents = await this.gateway.extractMultimodal(attachments);
+        for (const mc of multimodalContents) {
+          if (mc.extractedText) {
+            content += `\n[${mc.type} 提取内容]: ${mc.extractedText}`;
+          }
+        }
+      }
+
       const parsed = this.gateway.parseMessage({
         platform: 'discord',
         channelId: message.channelId,
         userId: message.author.id,
-        content: message.content,
-        attachments: [...message.attachments.values()].map((attachment) => ({
-          type: this.getAttachmentType(attachment.contentType ?? ''),
-          url: attachment.url,
-          name: attachment.name ?? 'attachment',
-          mimeType: attachment.contentType ?? undefined,
-          size: attachment.size,
-        })),
+        content,
+        attachments,
         timestamp: message.createdTimestamp,
         guildId: message.guildId ?? undefined,
         replyTo: message.reference?.messageId,

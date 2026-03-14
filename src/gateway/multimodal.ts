@@ -25,35 +25,31 @@ export interface DocumentParseResult {
 
 export class MultimodalExtractor {
   async extract(attachments: Attachment[]): Promise<MultimodalContent[]> {
-    const contents: MultimodalContent[] = [];
-
-    for (const attachment of attachments) {
-      try {
-        switch (attachment.type) {
-          case 'image':
-            contents.push(await this.extractFromImage(attachment));
-            break;
-          case 'document':
-            contents.push(await this.extractFromDocument(attachment));
-            break;
-          case 'audio':
-            contents.push(await this.extractFromAudio(attachment));
-            break;
-          case 'video':
-            contents.push(await this.extractFromVideo(attachment));
-            break;
+    const results = await Promise.all(
+      attachments.map(async (attachment) => {
+        try {
+          switch (attachment.type) {
+            case 'image':
+              return await this.extractFromImage(attachment);
+            case 'document':
+              return await this.extractFromDocument(attachment);
+            case 'audio':
+              return await this.extractFromAudio(attachment);
+            case 'video':
+              return await this.extractFromVideo(attachment);
+          }
+        } catch (error) {
+          log.warn({ error, attachment: attachment.name }, '多模态内容提取失败');
+          return {
+            type: attachment.type,
+            url: attachment.url,
+            metadata: { error: true, message: String(error) },
+          } as MultimodalContent;
         }
-      } catch (error) {
-        log.warn({ error, attachment: attachment.name }, '多模态内容提取失败');
-        contents.push({
-          type: attachment.type,
-          url: attachment.url,
-          metadata: { error: true, message: String(error) },
-        });
-      }
-    }
+      }),
+    );
 
-    return contents;
+    return results;
   }
 
   private async extractFromImage(attachment: Attachment): Promise<MultimodalContent> {

@@ -68,12 +68,31 @@ export class TelegramAdapter implements PlatformAdapter {
     if (!message || message.from?.is_bot) return;
 
     try {
+      const userId = String(message.from?.id ?? 0);
+      if (!this.gateway.checkRateLimit(userId)) {
+        log.warn({ userId }, 'Telegram 用户触发速率限制');
+        await ctx.reply('您发送消息的速度太快了，请稍后再试。');
+        return;
+      }
+
+      const attachments = this.extractAttachments(message);
+      let content = message.text ?? '';
+
+      if (attachments.length > 0) {
+        const multimodalContents = await this.gateway.extractMultimodal(attachments);
+        for (const mc of multimodalContents) {
+          if (mc.extractedText) {
+            content += `\n[${mc.type} 提取内容]: ${mc.extractedText}`;
+          }
+        }
+      }
+
       const parsed = this.gateway.parseMessage({
         platform: 'telegram',
         channelId: String(message.chat.id),
-        userId: String(message.from?.id ?? 0),
-        content: message.text ?? '',
-        attachments: this.extractAttachments(message),
+        userId,
+        content,
+        attachments,
         timestamp: message.date * 1000,
       });
 
