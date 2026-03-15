@@ -14,6 +14,7 @@ interface DiscordAdapterOptions {
   token: string;
   gateway: GatewayService;
   controller: ControllerService;
+  apiUrl?: string;
 }
 
 export class DiscordAdapter implements PlatformAdapter {
@@ -23,14 +24,20 @@ export class DiscordAdapter implements PlatformAdapter {
   private token: string;
 
   constructor(options: DiscordAdapterOptions) {
-    this.client = new Client({
+    const clientOptions: any = {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
       ],
-    });
+    };
+    
+    if (options.apiUrl) {
+      clientOptions.rest = { api: options.apiUrl };
+    }
+
+    this.client = new Client(clientOptions);
     this.gateway = options.gateway;
     this.controller = options.controller;
     this.token = options.token;

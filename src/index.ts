@@ -58,6 +58,7 @@ async function main() {
       token: config.discord.token,
       gateway,
       controller,
+      apiUrl: config.discord.apiUrl,
     });
     activeAdapters.push(discord);
     startPromises.push(discord.start());
@@ -68,6 +69,7 @@ async function main() {
       token: config.telegram.token,
       gateway,
       controller,
+      apiUrl: config.telegram.apiUrl,
     });
     activeAdapters.push(telegram);
     startPromises.push(telegram.start());

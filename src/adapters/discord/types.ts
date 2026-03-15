@@ -5,6 +5,7 @@ export interface DiscordAdapterOptions {
   token: string;
   gateway: GatewayService;
   controller: ControllerService;
+  apiUrl?: string;
 }
 
 export interface DiscordEmbed {

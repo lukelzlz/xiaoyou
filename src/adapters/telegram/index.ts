@@ -10,6 +10,7 @@ interface TelegramAdapterOptions {
   token: string;
   gateway: GatewayService;
   controller: ControllerService;
+  apiUrl?: string;
 }
 
 export class TelegramAdapter implements PlatformAdapter {
@@ -18,7 +19,11 @@ export class TelegramAdapter implements PlatformAdapter {
   private controller: ControllerService;
 
   constructor(options: TelegramAdapterOptions) {
-    this.bot = new Bot(options.token);
+    const botOptions: any = {};
+    if (options.apiUrl) {
+      botOptions.client = { apiRoot: options.apiUrl };
+    }
+    this.bot = new Bot(options.token, botOptions);
     this.gateway = options.gateway;
     this.controller = options.controller;
   }

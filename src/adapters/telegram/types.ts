@@ -5,6 +5,7 @@ export interface TelegramAdapterOptions {
   token: string;
   gateway: GatewayService;
   controller: ControllerService;
+  apiUrl?: string;
 }
 
 export interface InlineKeyboard {

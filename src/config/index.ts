@@ -12,10 +12,12 @@ const configSchema = z.object({
   discord: z.object({
     token: z.string(),
     clientId: z.string(),
+    apiUrl: z.string().optional(),
   }),
 
   telegram: z.object({
     token: z.string(),
+    apiUrl: z.string().optional(),
   }),
 
   glm: z.object({
@@ -71,10 +73,12 @@ export const config = configSchema.parse({
   discord: {
     token: process.env.DISCORD_TOKEN || '',
     clientId: process.env.DISCORD_CLIENT_ID || '',
+    apiUrl: process.env.DISCORD_API_URL,
   },
 
   telegram: {
     token: process.env.TELEGRAM_TOKEN || '',
+    apiUrl: process.env.TELEGRAM_API_URL,
   },
 
   glm: {
