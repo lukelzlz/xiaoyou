@@ -1,17 +1,20 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenClawCron } from '../../src/executor/openclaw-cron.js';
 import { ErrorCode, XiaoyouError } from '../../src/utils/error.js';
 import type { CronRule } from '../../src/types/index.js';
-
-// 模拟全局 fetch
-const originalFetch = global.fetch;
 
 describe('OpenClawCron', () => {
   let cron: OpenClawCron;
 
   beforeEach(() => {
-    cron = new OpenClawCron();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    cron = new OpenClawCron();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('应该能成功注册定时任务', async () => {
@@ -22,7 +25,7 @@ describe('OpenClawCron', () => {
         status: 'active',
       }),
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     const rule: CronRule = {
       expression: '0 9 * * *',
@@ -44,7 +47,7 @@ describe('OpenClawCron', () => {
       ok: false,
       status: 409,
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     const rule: CronRule = {
       expression: '0 9 * * *',
@@ -66,7 +69,7 @@ describe('OpenClawCron', () => {
     const mockResponse = {
       ok: true,
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     await expect(cron.update('test-id', { expression: '0 10 * * *' })).resolves.toBeUndefined();
     expect(fetch).toHaveBeenCalledOnce();
@@ -76,7 +79,7 @@ describe('OpenClawCron', () => {
     const mockResponse = {
       ok: true,
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     await expect(cron.cancel('test-id')).resolves.toBeUndefined();
     expect(fetch).toHaveBeenCalledOnce();
@@ -95,7 +98,7 @@ describe('OpenClawCron', () => {
         },
       ],
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     const tasks = await cron.listTasks('user-1');
     expect(tasks).toHaveLength(1);
@@ -107,7 +110,7 @@ describe('OpenClawCron', () => {
       ok: false,
       status: 500,
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     await expect(cron.getExecutionHistory('test-id')).rejects.toThrow(XiaoyouError);
     await expect(cron.getExecutionHistory('test-id')).rejects.toMatchObject({
@@ -120,7 +123,7 @@ describe('OpenClawCron', () => {
       ok: false,
       status: 500,
     };
-    global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse as unknown as Response));
 
     // 调用 sendNotification，它内部只是用 log.warn 记录
     await expect(cron.sendNotification('user-1', 'Title', 'Message')).resolves.toBeUndefined();

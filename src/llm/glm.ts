@@ -19,14 +19,15 @@ export class GLMService extends OpenAICompatibleClient {
       apiKey: config.glm.apiKey,
       apiUrl: config.glm.apiUrl,
       model: config.glm.model,
+      visionModel: config.glm.visionModel,
       maxTokens: config.glm.maxTokens,
       temperature: config.glm.temperature,
       timeout: config.glm.timeout,
     });
   }
 
-  async chat(prompt: string, systemPrompt?: string): Promise<string> {
-    return super.chat(prompt, { systemPrompt });
+  async chat(prompt: string, options?: { systemPrompt?: string }): Promise<string> {
+    return super.chat(prompt, options?.systemPrompt ? { systemPrompt: options.systemPrompt } : undefined);
   }
 
   async analyzeVision(

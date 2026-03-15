@@ -8,6 +8,7 @@ export interface BaseLLMConfig {
   apiKey: string;
   apiUrl: string;
   model: string;
+  visionModel?: string;
   maxTokens?: number;
   temperature?: number;
   timeout?: number;
@@ -23,6 +24,7 @@ export interface ChatOptions {
 export abstract class OpenAICompatibleClient {
   protected client: OpenAI;
   protected model: string;
+  protected visionModel: string;
   protected maxTokens: number;
   protected temperature: number;
   protected timeout: number;
@@ -40,6 +42,7 @@ export abstract class OpenAICompatibleClient {
       maxRetries: 0,
     });
     this.model = config.model;
+    this.visionModel = config.visionModel ?? config.model;
     this.maxTokens = config.maxTokens ?? 4096;
     this.temperature = config.temperature ?? 0.7;
   }
@@ -83,7 +86,7 @@ export abstract class OpenAICompatibleClient {
     try {
       const response = await this.executeWithRetry(() =>
         this.client.chat.completions.create({
-          model: this.model,
+          model: this.visionModel,
           temperature: this.temperature,
           max_tokens: this.maxTokens,
           messages: [
@@ -102,8 +105,8 @@ export abstract class OpenAICompatibleClient {
 
       return response.choices[0]?.message?.content ?? '';
     } catch (error) {
-      log.error({ error, model: this.model }, 'LLM 视觉分析调用失败');
-      throw new XiaoyouError(ErrorCode.LLM_ERROR, `调用 ${this.model} 视觉分析失败`, {
+      log.error({ error, model: this.visionModel }, 'LLM 视觉分析调用失败');
+      throw new XiaoyouError(ErrorCode.LLM_ERROR, `调用 ${this.visionModel} 视觉分析失败`, {
         cause: error instanceof Error ? error : new Error(String(error)),
         retryable: this.isRetryableError(error),
       });

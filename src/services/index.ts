@@ -56,7 +56,7 @@ export class ChatService implements SceneHandler {
 
     const prompt = `${context ? `历史对话：\n${context}\n` : ''}${longTermContext}\n\n用户（意图: ${intent.type}）：${message.textContent}\n\n请回复：`;
 
-    const reply = await this.glm.chat(prompt, systemPrompt);
+    const reply = await this.glm.chat(prompt, { systemPrompt });
 
     // 跟踪会话，供 MemoryFlush 定期归档
     this.memoryFlush.track(sessionKey);

@@ -199,7 +199,7 @@ export class ControllerService {
     const sentimentLine = intent?.sentiment ? `\n用户情绪：${intent.sentiment.type}` : '';
     const prompt = `历史对话：\n${context}${sentimentLine}\n\n用户：${message.textContent}\n\n请回复：`;
 
-    return this.glm.chat(prompt, '你是小悠，一个友好、智能、会结合上下文和用户情绪回应的 AI 助手。');
+    return this.glm.chat(prompt, { systemPrompt: '你是小悠，一个友好、智能、会结合上下文和用户情绪回应的 AI 助手。' });
   }
 
   private async recordConversation(

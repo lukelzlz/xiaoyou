@@ -34,10 +34,21 @@
 |--------|------|--------|------|
 | `GLM_API_KEY` | 是 | - | GLM API 密钥 |
 | `GLM_API_URL` | 是 | - | GLM API 地址 |
-| `GLM_MODEL` | 否 | `glm-4.5-air` | 模型名称 |
+| `MODEL_ID` | 否 | `glm-4.5-air` | 聊天模型 ID（优先级高于 `GLM_MODEL`） |
+| `EMBEDDING_MODEL_ID` | 否 | `text-embedding-3-small` | 向量嵌入模型 ID（优先级高于 `GLM_EMBEDDING_MODEL`） |
+| `VISION_MODEL_ID` | 否 | `glm-4.5-vision` | 多模态视觉模型 ID（优先级高于 `GLM_VISION_MODEL`，未配置时回退到 `MODEL_ID`） |
+| `GLM_MODEL` | 否 | `glm-4.5-air` | （兼容旧配置）聊天模型名称 |
+| `GLM_EMBEDDING_MODEL` | 否 | `text-embedding-3-small` | （兼容旧配置）向量嵌入模型名称 |
+| `GLM_VISION_MODEL` | 否 | `glm-4.5-vision` | （兼容旧配置）多模态视觉模型名称 |
 | `GLM_MAX_TOKENS` | 否 | `4096` | 最大生成 token 数 |
 | `GLM_TEMPERATURE` | 否 | `0.7` | 生成温度 |
 | `GLM_TIMEOUT` | 否 | `30000` | 请求超时（毫秒） |
+
+> **模型配置说明**：
+> - `MODEL_ID`：用于日常聊天、意图识别等文本生成任务
+> - `EMBEDDING_MODEL_ID`：用于将文本转换为向量，支持语义检索和长期记忆
+> - `VISION_MODEL_ID`：用于图片、文档、视频等多模态内容的理解与摘要
+> - 三个模型可独立配置，适配不同场景的性能与成本需求
 
 ### 1.5 Nemotron 配置
 
@@ -318,6 +329,9 @@ TELEGRAM_TOKEN=dev_telegram_token
 GLM_API_KEY=dev_glm_key
 GLM_API_URL=https://api.glm.ai/v1
 GLM_TEMPERATURE=0.8
+MODEL_ID=glm-4.5-air
+EMBEDDING_MODEL_ID=text-embedding-3-small
+VISION_MODEL_ID=glm-4.5-vision
 
 # Nemotron
 NEMOTRON_API_KEY=dev_nemotron_key
@@ -358,6 +372,9 @@ TELEGRAM_WEBHOOK_URL=https://api.xiaoyou.com/webhook/telegram
 GLM_API_KEY=prod_glm_key
 GLM_API_URL=https://api.glm.ai/v1
 GLM_TEMPERATURE=0.7
+MODEL_ID=glm-4.5-air
+EMBEDDING_MODEL_ID=text-embedding-3-small
+VISION_MODEL_ID=glm-4.5-vision
 
 # Nemotron
 NEMOTRON_API_KEY=prod_nemotron_key

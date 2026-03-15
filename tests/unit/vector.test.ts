@@ -171,10 +171,9 @@ describe('VectorMemoryStore', () => {
   });
 
   it('访问不存在的记忆时应该静默处理', async () => {
-    // 模拟 retrieve 返回空数组
-    const { QdrantClient } = await import('@qdrant/js-client-rest');
-    const mockClient = new (QdrantClient as unknown as ReturnType<typeof vi.fn>)();
-    mockClient.retrieve.mockResolvedValueOnce([]);
+    // 获取 store 内部持有的 client 实例并覆写 retrieve
+    const client = Reflect.get(store, 'client') as { retrieve: ReturnType<typeof vi.fn> };
+    client.retrieve.mockResolvedValueOnce([]);
 
     await expect(store.markAccessed('non-existent-id')).resolves.toBeUndefined();
   });

@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-小悠是一个基于多模型协作的智能助手系统，通过 Discord/Telegram 等社交平台为用户提供陪伴聊天、信息查询、复杂任务执行和定时任务管理等服务。系统采用分层架构设计，以 GLM-4.5-Air 为前台总控，结合 Nemotron-3-Super 规划引擎和 OpenClaw 执行引擎，实现从简单对话到复杂自动化的全场景覆盖。
+小悠是一个基于多模型协作的智能助手系统，通过 Discord/Telegram 等社交平台为用户提供陪伴聊天、信息查询、复杂任务执行和定时任务管理等服务。系统采用分层架构设计，以可配置聊天模型为前台总控，结合 Nemotron-3-Super 规划引擎和 OpenClaw 执行引擎，实现从简单对话到复杂自动化的全场景覆盖。当前支持通过 `MODEL_ID`、`EMBEDDING_MODEL_ID`、`VISION_MODEL_ID` 分别配置聊天、向量和多模态模型 ID。
 
 ## 系统架构
 
@@ -47,7 +47,7 @@ flowchart TB
 
 ## 核心组件
 
-### 1. GLM-4.5-Air（前台总控）
+### 1. 聊天模型 / GLM 服务（前台总控）
 
 作为系统的唯一入口和中央控制器，负责：
 
@@ -55,6 +55,8 @@ flowchart TB
 - **意图识别**：分析用户请求，进行场景分流
 - **上下文管理**：与记忆系统交互，维护会话状态
 - **响应生成**：直接回复或包装工具/执行结果
+
+> 默认可使用 GLM 系列模型，也可以通过环境变量切换为其他兼容模型。其中图片、文档、视频等多模态理解能力由 `VISION_MODEL_ID` 单独控制，向量嵌入由 `EMBEDDING_MODEL_ID` 单独控制。
 
 ### 2. Nemotron-3-Super（规划工具）
 
@@ -392,7 +394,7 @@ sequenceDiagram
 
 | 组件 | 技术选型 |
 |------|----------|
-| 前台总控 | GLM-4.5-Air |
+| 前台总控 | 可配置聊天模型（默认 `MODEL_ID=glm-4.5-air`） |
 | 规划引擎 | Nemotron-3-Super |
 | 执行引擎 | [OpenClaw Agent](https://docs.openclaw.ai/zh-CN) |
 | 定时调度 | OpenClaw CRON |

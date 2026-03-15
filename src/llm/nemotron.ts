@@ -25,8 +25,8 @@ export class NemotronService extends OpenAICompatibleClient {
     });
   }
 
-  async chat(prompt: string, systemPrompt?: string): Promise<string> {
-    return super.chat(prompt, { systemPrompt });
+  async chat(prompt: string, options?: { systemPrompt?: string }): Promise<string> {
+    return super.chat(prompt, options?.systemPrompt ? { systemPrompt: options.systemPrompt } : undefined);
   }
 
   /**
