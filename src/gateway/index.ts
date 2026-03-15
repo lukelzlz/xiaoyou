@@ -1,7 +1,8 @@
 import { MessageParser } from './parser.js';
-import { MultimodalExtractor } from './multimodal.js';
+import { MultimodalExtractor, type MultimodalServices } from './multimodal.js';
 import { RateLimiter } from './ratelimit.js';
 import type { ParsedMessage, RawMessage, Attachment } from '../types/index.js';
+import type { GLMService } from '../llm/glm.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('gateway');
@@ -11,9 +12,9 @@ export class GatewayService {
   private multimodal: MultimodalExtractor;
   private rateLimiter: RateLimiter;
 
-  constructor() {
+  constructor(multimodalServices?: MultimodalServices, glm?: GLMService) {
     this.parser = new MessageParser();
-    this.multimodal = new MultimodalExtractor();
+    this.multimodal = new MultimodalExtractor(multimodalServices, glm);
     this.rateLimiter = new RateLimiter();
   }
 
@@ -55,17 +56,7 @@ export class GatewayService {
   }
 
   private buildMultimodalSummary(contents: NonNullable<ParsedMessage['multimodalContents']>): string {
-    if (!contents.length) {
-      return '';
-    }
-
-    return contents
-      .map((item, index) => {
-        const text = item.extractedText ? `文本: ${item.extractedText}` : '文本: 无';
-        const labels = item.labels?.length ? `标签: ${item.labels.join('、')}` : '标签: 无';
-        return `附件${index + 1}(${item.type}) - ${text}; ${labels}`;
-      })
-      .join('\n');
+    return this.multimodal.buildPromptContext(contents);
   }
 }
 

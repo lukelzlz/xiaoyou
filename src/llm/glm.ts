@@ -1,42 +1,63 @@
-import OpenAI from 'openai';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
-import { ErrorCode, XiaoyouError } from '../utils/error.js';
 import type { Intent, ParsedMessage } from '../types/index.js';
 import { IntentType } from '../types/index.js';
+import { OpenAICompatibleClient } from './base.js';
 
 const log = createChildLogger('glm');
 
-export class GLMService {
-  private client: OpenAI;
+export interface VisionAnalysisResult {
+  text: string;
+  labels: string[];
+  confidence: number;
+  metadata?: Record<string, unknown>;
+}
 
+export class GLMService extends OpenAICompatibleClient {
   constructor() {
-    this.client = new OpenAI({
+    super({
       apiKey: config.glm.apiKey,
-      baseURL: config.glm.apiUrl,
+      apiUrl: config.glm.apiUrl,
+      model: config.glm.model,
+      maxTokens: config.glm.maxTokens,
+      temperature: config.glm.temperature,
+      timeout: config.glm.timeout,
     });
   }
 
   async chat(prompt: string, systemPrompt?: string): Promise<string> {
-    try {
-      const response = await this.client.chat.completions.create({
-        model: config.glm.model,
-        temperature: config.glm.temperature,
-        max_tokens: config.glm.maxTokens,
-        messages: [
-          ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-          { role: 'user' as const, content: prompt },
-        ],
-      });
+    return super.chat(prompt, { systemPrompt });
+  }
 
-      return response.choices[0]?.message?.content ?? '';
-    } catch (error) {
-      log.error({ error }, 'GLM chat 调用失败');
-      throw new XiaoyouError(ErrorCode.LLM_ERROR, 'GLM 调用失败', {
-        cause: error instanceof Error ? error : new Error(String(error)),
-        retryable: true,
-      });
-    }
+  async analyzeVision(
+    input: { url: string; type: 'image' | 'document' | 'audio' | 'video'; name?: string; mimeType?: string },
+    instruction?: string,
+  ): Promise<VisionAnalysisResult> {
+    const content = await this.chatWithVision(
+      [
+        `附件类型: ${input.type}`,
+        `附件名称: ${input.name ?? 'unknown'}`,
+        `MIME: ${input.mimeType ?? 'unknown'}`,
+        instruction ?? '请提取主要文本、关键标签、场景摘要，并返回 JSON。',
+      ].join('\n'),
+      input.url,
+      {
+        systemPrompt:
+          '你是一个多模态理解助手。请根据用户提供的附件链接进行视觉理解，并严格返回 JSON，字段包括 text、labels、confidence、metadata。',
+        jsonMode: true,
+      },
+    );
+
+    const parsed = this.parseJson<Partial<VisionAnalysisResult>>(content, '视觉分析结果');
+
+    return {
+      text: parsed.text ?? '',
+      labels: Array.isArray(parsed.labels)
+        ? parsed.labels.filter((item): item is string => typeof item === 'string')
+        : [],
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.6,
+      metadata: parsed.metadata ?? {},
+    };
   }
 
   async embed(text: string): Promise<number[]> {
@@ -48,10 +69,7 @@ export class GLMService {
       return response.data[0]?.embedding ?? [];
     } catch (error) {
       log.error({ error }, 'GLM embedding 调用失败');
-      throw new XiaoyouError(ErrorCode.LLM_ERROR, '向量化失败', {
-        cause: error instanceof Error ? error : new Error(String(error)),
-        retryable: true,
-      });
+      throw error;
     }
   }
 

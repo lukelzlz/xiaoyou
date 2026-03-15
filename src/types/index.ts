@@ -333,10 +333,13 @@ export interface ClarificationQuestion {
 
 // 执行状态
 export interface ExecutionStatus {
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_user';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_user' | 'paused';
   currentStep?: string;
   completedSteps: string[];
   failedSteps: string[];
+  waitingForUser?: boolean;
+  updatedAt?: Date;
+  stepResults?: StepResult[];
   error?: Error;
 }
 
@@ -395,6 +398,7 @@ export interface SessionContext {
   createdAt: Date;
   lastActiveAt: Date;
   variables: Record<string, unknown>;
+  activeTask?: ActiveTask;
   pendingAction?: {
     type: string;
     data: Record<string, unknown>;
@@ -411,6 +415,10 @@ export interface ContextManager {
   getVariable(sessionId: string, key: string): Promise<unknown>;
   setPendingAction(sessionId: string, action: SessionContext['pendingAction']): Promise<void>;
   clearPendingAction(sessionId: string): Promise<void>;
+  setActiveTask(sessionId: string, task: ActiveTask | undefined): Promise<void>;
+  updateMetadata(sessionId: string, patch: Record<string, unknown>): Promise<void>;
+  snapshot(sessionId: string): Promise<SessionContext | null>;
+  delete(sessionId: string): Promise<void>;
   touch(sessionId: string): Promise<void>;
 }
 

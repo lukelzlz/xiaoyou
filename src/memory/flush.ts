@@ -193,6 +193,11 @@ export class MemoryFlush {
     }
   }
 
+  async decayImportance(daysSinceLastAccess: number, currentImportance: number): Promise<number> {
+    const decayFactor = Math.max(0.5, 1 - daysSinceLastAccess * 0.02);
+    return Math.max(0.1, Number((currentImportance * decayFactor).toFixed(4)));
+  }
+
   /** 归档任务记录到向量数据库 */
   async archiveTask(
     userId: string,

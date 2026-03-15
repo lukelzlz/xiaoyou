@@ -4,7 +4,7 @@
 
 ### 1.1 核心目标
 
-- **多模态交互**：支持文本、图片、文件等多种输入形式
+- **多模态交互**：支持文本、图片、文件等多种输入形式，并以视觉大语言模型作为统一理解入口
 - **智能路由**：根据意图自动选择最优处理路径
 - **任务编排**：支持简单到复杂的各类任务执行
 - **记忆持久化**：短期热记忆 + 长期向量记忆的双层架构
@@ -96,7 +96,7 @@ interface PlatformAdapter {
 interface GatewayService {
   // 解析消息
   parseMessage(raw: RawMessage): ParsedMessage;
-  // 提取多模态内容
+  // 通过视觉大语言模型提取并汇总多模态内容
   extractMultimodal(message: ParsedMessage): MultimodalContent;
   // 速率限制检查
   checkRateLimit(userId: string): boolean;
@@ -176,7 +176,7 @@ flowchart LR
     subgraph 输入处理
         A1[消息接收]
         A2[格式解析]
-        A3[多模态提取]
+        A3[视觉大语言模型多模态提取]
     end
 
     subgraph 意图处理
@@ -612,7 +612,7 @@ sequenceDiagram
     User->>Platform: 发送消息
     Platform->>Gateway: Webhook
     Gateway->>Gateway: 解析消息
-    Gateway->>Gateway: 多模态提取
+    Gateway->>Gateway: 视觉大语言模型多模态提取
     Gateway->>Gateway: 速率检查
     Gateway->>Controller: 转发请求
     

@@ -51,7 +51,7 @@ flowchart TB
 
 作为系统的唯一入口和中央控制器，负责：
 
-- **消息解析**：接收来自社交平台的多模态输入（文本/图片/文件/指令）
+- **消息解析**：接收来自社交平台的多模态输入（文本/图片/文件/指令），并通过视觉大语言模型完成统一理解与摘要
 - **意图识别**：分析用户请求，进行场景分流
 - **上下文管理**：与记忆系统交互，维护会话状态
 - **响应生成**：直接回复或包装工具/执行结果
@@ -404,7 +404,7 @@ sequenceDiagram
 
 当前代码已完成文档中核心分层能力的首版落地：
 
-- **网关层**：[`src/gateway/index.ts`](src/gateway/index.ts) 已串联消息解析、多模态提取与限流检查，支持将附件摘要注入消息元数据。
+- **网关层**：[`src/gateway/index.ts`](src/gateway/index.ts) 已串联消息解析、多模态提取与限流检查，当前多模态链路以视觉大语言模型接口为核心，并支持将附件摘要注入消息元数据。
 - **控制层**：[`src/controller/intent.ts`](src/controller/intent.ts)、[`src/controller/router.ts`](src/controller/router.ts)、[`src/controller/context.ts`](src/controller/context.ts) 已拆分实现，分别负责意图识别、优先级路由与会话上下文管理。
 - **服务层**：[`src/services/index.ts`](src/services/index.ts) 已提供聊天、工具、复杂任务、定时任务四类场景服务。
 - **执行层**：[`src/llm/nemotron.ts`](src/llm/nemotron.ts)、[`src/executor/openclaw-agent.ts`](src/executor/openclaw-agent.ts)、[`src/executor/openclaw-cron.ts`](src/executor/openclaw-cron.ts) 已支持计划生成、参数校验、执行状态控制与定时调度。

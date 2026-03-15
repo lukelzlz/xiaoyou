@@ -31,6 +31,29 @@ describe('InMemoryContextManager', () => {
     manager.destroy();
   });
 
+  it('应该能够设置活动任务并在快照中返回', async () => {
+    const manager = new InMemoryContextManager();
+    const sessionId = 'task-session';
+    await manager.getOrCreate(sessionId, 'u1', 'c1', 'telegram');
+
+    await manager.setActiveTask(sessionId, {
+      taskId: 'task-1',
+      description: '整理文档',
+      status: 'running',
+      progress: 60,
+    });
+
+    const snapshot = await manager.snapshot(sessionId);
+    expect(snapshot?.activeTask).toEqual(
+      expect.objectContaining({
+        taskId: 'task-1',
+        progress: 60,
+      }),
+    );
+
+    manager.destroy();
+  });
+
   it('应该能够更新元数据', async () => {
     const manager = new InMemoryContextManager();
     const sessionId = 'test-session';

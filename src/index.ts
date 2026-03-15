@@ -28,7 +28,7 @@ async function main() {
   const vectorMemory = new VectorMemoryStore(glm);
   const openclaw = new OpenClawAgent();
   const openclawCron = new OpenClawCron();
-  const gateway = new GatewayService();
+  const gateway = new GatewayService(undefined, glm);
 
   // 初始化向量数据库
   await vectorMemory.init();

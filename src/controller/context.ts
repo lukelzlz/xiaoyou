@@ -113,6 +113,16 @@ export class InMemoryContextManager implements ContextManager {
     context.lastActiveAt = new Date();
   }
 
+  async setActiveTask(sessionId: string, task: SessionContext['activeTask']): Promise<void> {
+    const context = this.contexts.get(sessionId);
+    if (!context) {
+      throw new Error(`Session context not found: ${sessionId}`);
+    }
+
+    context.activeTask = task;
+    context.lastActiveAt = new Date();
+  }
+
   async touch(sessionId: string): Promise<void> {
     const context = this.contexts.get(sessionId);
     if (!context) {
@@ -184,6 +194,7 @@ export class InMemoryContextManager implements ContextManager {
       ...context,
       createdAt: new Date(context.createdAt),
       lastActiveAt: new Date(context.lastActiveAt),
+      activeTask: context.activeTask ? { ...context.activeTask } : undefined,
       pendingAction: context.pendingAction
         ? {
             ...context.pendingAction,

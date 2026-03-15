@@ -94,6 +94,10 @@ export class ToolService implements SceneHandler {
 
 // ============ 场景 C：任务服务 ============
 
+import { pluginManager } from '../plugins/index.js';
+
+import { metricsService } from '../monitoring/metrics.js';
+
 export class TaskService implements SceneHandler {
   constructor(
     private planner: NemotronService,
@@ -104,8 +108,10 @@ export class TaskService implements SceneHandler {
   async handle(message: ParsedMessage, _intent: EnhancedIntent): Promise<string> {
     log.info({ userId: message.userId }, '开始处理复杂任务');
 
+    const finalDescription = await pluginManager.executeTaskPreprocess(message.textContent, message);
+
     const task: TaskDescription = {
-      description: message.textContent,
+      description: finalDescription,
       type: 'general',
       availableTools: ['search', 'extract', 'query'],
     };
@@ -115,7 +121,8 @@ export class TaskService implements SceneHandler {
     log.info({ planId: plan.planId, steps: plan.steps.length }, '任务规划完成');
 
     // 2. 执行
-    const result = await this.executor.executeTask(plan);
+    const rawResult = await this.executor.executeTask(plan);
+    const result = await pluginManager.executeTaskPostprocess(rawResult, message);
 
     // 3. 归档任务结果
     try {
@@ -131,13 +138,16 @@ export class TaskService implements SceneHandler {
     }
 
     if (typeof result === 'string') {
+      metricsService.recordTask(true);
       return result;
     }
 
-    return `任务已完成（计划ID: ${result.planId}）\n` +
-      `状态: ${result.status}\n` +
-      `耗时: ${Math.round(result.totalDuration / 1000)}秒\n` +
-      `步骤: ${result.stepResults.length} 步`;
+    const typedResult = result as any; // Allow for plugin modifications but fallback to standard PlanResult
+    metricsService.recordTask(typedResult.status === 'success' || typedResult.status === 'partial');
+    return `任务已完成（计划ID: ${typedResult.planId || plan.planId}）\n` +
+      `状态: ${typedResult.status || 'unknown'}\n` +
+      `耗时: ${Math.round((typedResult.totalDuration || 0) / 1000)}秒\n` +
+      `步骤: ${typedResult.stepResults?.length || 0} 步`;
   }
 }
 
@@ -200,6 +210,7 @@ export class ScheduleService implements SceneHandler {
         name: `UserTask_${message.userId.slice(0, 5)}_${Date.now()}`,
         description: message.textContent,
         notifyOnFailure: true,
+        notifyOnComplete: true, // 增强：支持任务完成时通知
       }
     );
 

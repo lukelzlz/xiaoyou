@@ -15,7 +15,7 @@ describe('SceneRouter', () => {
     expect(scene).toBe(SceneType.SCHEDULE);
   });
 
-  it('任务场景应该匹配条件', () => {
+  it('任务场景应该匹配 requiresPlanning 条件', () => {
     const router = new SceneRouter();
     const intent: EnhancedIntent = {
       type: IntentType.TASK_AUTOMATION,
@@ -23,10 +23,26 @@ describe('SceneRouter', () => {
       entities: [],
     };
     const scene = router.route(intent);
-    // 因为 TASK 需要 requiresPlanning=true 条件（在 condition 尚未完全实现时可能默认不过/或者过）
-    // 当前实现中 condition 如果存在，我们没传 message 或未提供自定义判断函数，这里检查一下能否正确路由到 TASK
-    // 注：默认 defaultRoutingRules 里 TASK 规则配置了 condition: { requiresPlanning: true }
-    // matchesCondition 方法里如果没有特意处理 requiresPlanning，它会默认返回 true
+    expect(scene).toBe(SceneType.TASK);
+  });
+
+  it('带文件实体的聊天请求可提升为需要规划的任务场景', () => {
+    const router = new SceneRouter([
+      {
+        intent: IntentType.CHAT_QUESTION,
+        scene: SceneType.TASK,
+        priority: 90,
+        condition: { requiresPlanning: true },
+      },
+    ]);
+
+    const intent: EnhancedIntent = {
+      type: IntentType.CHAT_QUESTION,
+      confidence: 0.92,
+      entities: [{ type: 'file', value: 'report.pdf', start: 0, end: 10 }],
+    };
+
+    const scene = router.route(intent);
     expect(scene).toBe(SceneType.TASK);
   });
 

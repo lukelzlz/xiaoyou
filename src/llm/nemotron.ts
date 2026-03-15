@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
@@ -10,38 +9,24 @@ import type {
   TaskDescription,
   ValidationResult,
 } from '../types/index.js';
+import { OpenAICompatibleClient } from './base.js';
 
 const log = createChildLogger('nemotron');
 
-export class NemotronService {
-  private client: OpenAI;
-
+export class NemotronService extends OpenAICompatibleClient {
   constructor() {
-    this.client = new OpenAI({
+    super({
       apiKey: config.nemotron.apiKey,
-      baseURL: config.nemotron.apiUrl,
+      apiUrl: config.nemotron.apiUrl,
+      model: config.nemotron.model,
+      maxTokens: config.nemotron.maxTokens,
+      temperature: 0.2,
+      timeout: config.nemotron.timeout,
     });
   }
 
   async chat(prompt: string, systemPrompt?: string): Promise<string> {
-    try {
-      const response = await this.client.chat.completions.create({
-        model: config.nemotron.model,
-        max_tokens: config.nemotron.maxTokens,
-        messages: [
-          ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-          { role: 'user' as const, content: prompt },
-        ],
-      });
-
-      return response.choices[0]?.message?.content ?? '';
-    } catch (error) {
-      log.error({ error }, 'Nemotron 调用失败');
-      throw new XiaoyouError(ErrorCode.LLM_ERROR, 'Nemotron 调用失败', {
-        cause: error instanceof Error ? error : new Error(String(error)),
-        retryable: true,
-      });
-    }
+    return super.chat(prompt, { systemPrompt });
   }
 
   /**
@@ -245,38 +230,18 @@ export class NemotronService {
     return this.parseJson<CronRule>(result, 'CRON 规则');
   }
 
-  private parseJson<T>(raw: string, label: string): T {
-    try {
-      return JSON.parse(raw) as T;
-    } catch (parseError) {
-      log.error({ rawResponse: raw.slice(0, 500), parseError }, `${label} JSON 解析失败`);
-      throw new XiaoyouError(ErrorCode.PLAN_INVALID, `无法解析${label}`, {
-        details: { rawResponse: raw.slice(0, 500) },
-      });
-    }
-  }
-
   private inferParamType(paramName: string): string {
     const lower = paramName.toLowerCase();
-
-    if (lower.includes('path') || lower.includes('file') || lower.includes('url')) {
-      return 'string';
-    }
-    if (lower.includes('count') || lower.includes('limit') || lower.includes('number')) {
-      return 'number';
-    }
-    if (lower.includes('date') || lower.includes('time')) {
-      return 'datetime';
-    }
-    if (lower.includes('enable') || lower.includes('flag') || lower.startsWith('is')) {
-      return 'boolean';
-    }
-
+    if (lower.includes('path') || lower.includes('file') || lower.includes('dir')) return 'string(path)';
+    if (lower.includes('url') || lower.includes('link')) return 'string(url)';
+    if (lower.includes('count') || lower.includes('num') || lower.includes('size')) return 'number';
+    if (lower.includes('date') || lower.includes('time')) return 'datetime';
+    if (lower.includes('enable') || lower.includes('flag')) return 'boolean';
     return 'string';
   }
 
   private buildFallbackQuestion(missingParams: MissingParam[]): string {
-    const names = missingParams.map((item) => item.paramName).join('、');
-    return `为了继续执行任务，请补充以下信息：${names}`;
+    const grouped = missingParams.map((item) => `${item.stepId} 的 ${item.paramName}`).join('、');
+    return `为了继续执行，请补充以下必要信息：${grouped}。`;
   }
 }

@@ -719,21 +719,21 @@ export class MultimodalExtractor {
   }
 
   private async extractFromImage(attachment: Attachment): Promise<MultimodalContent> {
-    // 使用 OCR 或图像识别服务
-    const ocrResult = await this.ocrService.recognize(attachment.url);
+    // 使用带视觉能力的大语言模型统一完成截图理解、文字识别与语义标签提取
+    const visionResult = await this.visionModel.analyzeImage(attachment.url);
     
     return {
       type: 'image',
       url: attachment.url,
-      extractedText: ocrResult.text,
-      labels: ocrResult.labels,
-      confidence: ocrResult.confidence,
+      extractedText: visionResult.text,
+      labels: visionResult.labels,
+      confidence: visionResult.confidence,
     };
   }
 
   private async extractFromDocument(attachment: Attachment): Promise<MultimodalContent> {
-    // 解析文档内容
-    const content = await this.documentParser.parse(attachment.url);
+    // 文档优先转为可视觉理解的页面后交给视觉大语言模型统一解析
+    const content = await this.visionModel.analyzeDocument(attachment.url);
     
     return {
       type: 'document',

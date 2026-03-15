@@ -280,6 +280,30 @@ export class OpenClawCron {
     }
   }
 
+  /** 发送系统通知（用于告警或直接触达用户） */
+  async sendNotification(userId: string, title: string, message: string, level: 'info' | 'warn' | 'error' = 'info'): Promise<void> {
+    log.info({ userId, level, title }, '发送定时任务系统通知');
+
+    try {
+      const response = await fetch(`${config.openclaw.apiUrl}/notifications`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({
+          userId,
+          title,
+          message,
+          level,
+        }),
+      });
+
+      if (!response.ok) {
+        log.warn({ userId, status: response.status }, 'OpenClaw 系统通知发送失败');
+      }
+    } catch (error) {
+      log.warn({ error, userId }, 'OpenClaw 系统通知请求异常');
+    }
+  }
+
   /** 将 API 响应转换为 ScheduleTask 类型 */
   private toScheduleTask(t: CronTaskResponse): ScheduleTask {
     return {

@@ -1,4 +1,4 @@
-import type { EnhancedIntent, ParsedMessage, RoutingRule, RoutingCondition } from '../types/index.js';
+import type { EnhancedIntent, ParsedMessage, RoutingRule, RoutingCondition, SessionContext } from '../types/index.js';
 import { IntentType, SceneType } from '../types/index.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -77,10 +77,10 @@ export class SceneRouter {
   /**
    * 根据意图路由到对应场景
    */
-  route(intent: EnhancedIntent, message?: ParsedMessage): SceneType {
+  route(intent: EnhancedIntent, message?: ParsedMessage, context?: SessionContext): SceneType {
     // 按优先级遍历规则
     for (const rule of this.rules) {
-      if (this.matchesRule(rule, intent, message)) {
+      if (this.matchesRule(rule, intent, message, context)) {
         log.debug(
           { intent: intent.type, scene: rule.scene, priority: rule.priority },
           '路由匹配成功',
@@ -97,9 +97,9 @@ export class SceneRouter {
   /**
    * 获取匹配的路由规则详情
    */
-  getMatchedRule(intent: EnhancedIntent, message?: ParsedMessage): RoutingRule | null {
+  getMatchedRule(intent: EnhancedIntent, message?: ParsedMessage, context?: SessionContext): RoutingRule | null {
     for (const rule of this.rules) {
-      if (this.matchesRule(rule, intent, message)) {
+      if (this.matchesRule(rule, intent, message, context)) {
         return rule;
       }
     }
@@ -153,7 +153,7 @@ export class SceneRouter {
   /**
    * 检查规则是否匹配
    */
-  private matchesRule(rule: RoutingRule, intent: EnhancedIntent, message?: ParsedMessage): boolean {
+  private matchesRule(rule: RoutingRule, intent: EnhancedIntent, message?: ParsedMessage, context?: SessionContext): boolean {
     // 1. 检查意图类型是否匹配
     const intentTypes = Array.isArray(rule.intent) ? rule.intent : [rule.intent];
     if (!intentTypes.includes(intent.type)) {
@@ -162,7 +162,7 @@ export class SceneRouter {
 
     // 2. 检查条件
     if (rule.condition) {
-      if (!this.matchesCondition(rule.condition, intent, message)) {
+      if (!this.matchesCondition(rule.condition, intent, message, context)) {
         return false;
       }
     }
@@ -173,7 +173,12 @@ export class SceneRouter {
   /**
    * 检查条件是否满足
    */
-  private matchesCondition(condition: RoutingCondition, intent: EnhancedIntent, message?: ParsedMessage): boolean {
+  private matchesCondition(
+    condition: RoutingCondition,
+    intent: EnhancedIntent,
+    message?: ParsedMessage,
+    context?: SessionContext,
+  ): boolean {
     // 最小置信度检查
     if (condition.minConfidence !== undefined && intent.confidence < condition.minConfidence) {
       return false;
@@ -183,6 +188,19 @@ export class SceneRouter {
     if (condition.hasAttachments !== undefined) {
       const hasAttachments = message ? message.attachments.length > 0 : false;
       if (condition.hasAttachments !== hasAttachments) {
+        return false;
+      }
+    }
+
+    // 是否需要规划：任务意图、存在活动任务或多模态提取通常需要走 TASK
+    if (condition.requiresPlanning !== undefined) {
+      const inferredRequiresPlanning =
+        intent.type.startsWith('task.') ||
+        Boolean(context?.activeTask) ||
+        Boolean(message?.multimodalContents?.length) ||
+        intent.entities.some((entity) => ['file', 'url', 'date', 'command'].includes(entity.type));
+
+      if (condition.requiresPlanning !== inferredRequiresPlanning) {
         return false;
       }
     }

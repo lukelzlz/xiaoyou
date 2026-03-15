@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import Redis from 'ioredis';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { config } from './config/index.js';
+import { metricsService } from './monitoring/metrics.js';
 import { createChildLogger } from './utils/logger.js';
 
 const log = createChildLogger('health');
@@ -75,6 +76,10 @@ export function createHealthApp(): Hono {
     };
 
     return c.json(result, allHealthy ? 200 : 503);
+  });
+
+  app.get('/metrics', (c) => {
+    return c.json(metricsService.getSnapshot());
   });
 
   return app;

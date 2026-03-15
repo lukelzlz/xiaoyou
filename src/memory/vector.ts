@@ -83,6 +83,23 @@ export class VectorMemoryStore {
     // 如果启用了混合/关键字检索且数据库配置支持，可组装专门请求
     // 此处简化为利用 Qdrant 结合全文过滤的 Search
     
+    if (strategy.method === 'keyword' && query.trim() !== '') {
+      // 纯关键字检索（假设配置了 payload index text）
+      const textFilter = {
+        must: [
+          { key: 'content', match: { text: query } }
+        ]
+      };
+      
+      const combinedFilter = filter ? { must: [...(filter.must as unknown[]), ...textFilter.must] } : textFilter;
+      
+      const results = await this.client.scroll(this.collection, {
+        filter: combinedFilter,
+        limit: strategy.topK ?? 10,
+      });
+      return results.points.map((r) => this.toVectorMemory(r.id as string, r.payload, 1.0));
+    }
+
     // 默认使用相似度或混合
     const queryVector = await this.glm.embed(query);
 
@@ -157,14 +174,6 @@ export class VectorMemoryStore {
           range: Object.assign({}, ...timeConditions),
         });
       }
-    }
-
-    // 关键字过滤（如果是 keyword 或 hybrid 模式，则在此处利用 full_text 匹配）
-    if (strategy.method === 'keyword' || strategy.method === 'hybrid') {
-      // 假设检索词已经被简化，可以在 payload 的 content 字段做全文匹配
-      // 这取决于 Qdrant 的具体用法，这里用最简单的必须包含逻辑演示
-      // 实际上应当结合 Qdrant Text index 使用 match: { text: "..." }
-      // must.push({ key: 'content', match: { text: query } });
     }
 
     return must.length > 0 ? { must } : null;

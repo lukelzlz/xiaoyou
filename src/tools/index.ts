@@ -2,6 +2,8 @@ import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('tools');
 
+type JSONSchema = Record<string, unknown>;
+
 function normalizeInput(input: string): string {
   return input.replace(/\s+/g, ' ').trim();
 }
@@ -21,7 +23,7 @@ function splitSentences(input: string): string[] {
 export interface ToolDefinition<TParams extends Record<string, unknown> = Record<string, unknown>> {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  parameters: JSONSchema;
   requiredPermissions?: string[];
   timeout?: number;
   execute(params: TParams): Promise<string>;
@@ -32,10 +34,23 @@ export interface ToolExecutionContext {
   timeout?: number;
 }
 
+interface ObjectSchemaProperty {
+  type?: string;
+  enum?: unknown[];
+}
+
+interface ToolDescriptor {
+  name: string;
+  description: string;
+  requiredPermissions: string[];
+  timeout: number;
+}
+
 export class ToolRegistry {
   private tools = new Map<string, ToolDefinition>();
 
   register(tool: ToolDefinition): void {
+    this.validateDefinition(tool);
     this.tools.set(tool.name, tool);
     log.info({ tool: tool.name }, '工具已注册');
   }
@@ -57,6 +72,9 @@ export class ToolRegistry {
   }
 
   discover(query: string): ToolDefinition[] {
+    if (!query) {
+      return this.list();
+    }
     const normalized = normalizeInput(query).toLowerCase();
     return this.list().filter((tool) => {
       return (
@@ -64,6 +82,20 @@ export class ToolRegistry {
         tool.description.toLowerCase().includes(normalized)
       );
     });
+  }
+
+  describe(name: string): ToolDescriptor | null {
+    const tool = this.get(name);
+    if (!tool) {
+      return null;
+    }
+
+    return {
+      name: tool.name,
+      description: tool.description,
+      requiredPermissions: tool.requiredPermissions ?? [],
+      timeout: tool.timeout ?? 10_000,
+    };
   }
 
   async invoke(
@@ -77,6 +109,7 @@ export class ToolRegistry {
     }
 
     this.checkPermissions(tool, context.permissions ?? []);
+    this.validateParams(tool, params);
 
     const timeout = context.timeout ?? tool.timeout ?? 10_000;
     return this.withTimeout(tool.execute(params), timeout, name);
@@ -93,6 +126,57 @@ export class ToolRegistry {
     }
   }
 
+  private validateDefinition(tool: ToolDefinition): void {
+    if (!tool.name.trim()) {
+      throw new Error('工具名称不能为空');
+    }
+
+    if (this.tools.has(tool.name)) {
+      log.warn({ tool: tool.name }, '工具已存在，将执行覆盖注册');
+    }
+
+    const schemaType = tool.parameters?.type;
+    if (schemaType && schemaType !== 'object') {
+      throw new Error(`工具 ${tool.name} 的参数 schema 必须为 object`);
+    }
+  }
+
+  private validateParams(tool: ToolDefinition, params: Record<string, unknown>): void {
+    const required = Array.isArray(tool.parameters.required) ? tool.parameters.required : [];
+    const properties = (tool.parameters.properties as Record<string, ObjectSchemaProperty> | undefined) ?? {};
+    const allowAdditional = tool.parameters.additionalProperties !== false;
+
+    for (const key of required) {
+      const value = params[key as string];
+      if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+        throw new Error(`工具 ${tool.name} 缺少必填参数: ${String(key)}`);
+      }
+    }
+
+    for (const [key, value] of Object.entries(params)) {
+      const schema = properties[key];
+      if (!schema) {
+        if (!allowAdditional) {
+          throw new Error(`工具 ${tool.name} 不允许额外参数: ${key}`);
+        }
+        continue;
+      }
+
+      if (schema.type === 'string' && typeof value !== 'string') {
+        throw new Error(`工具 ${tool.name} 参数 ${key} 必须为 string`);
+      }
+      if (schema.type === 'number' && typeof value !== 'number') {
+        throw new Error(`工具 ${tool.name} 参数 ${key} 必须为 number`);
+      }
+      if (schema.type === 'boolean' && typeof value !== 'boolean') {
+        throw new Error(`工具 ${tool.name} 参数 ${key} 必须为 boolean`);
+      }
+      if (schema.enum && !schema.enum.includes(value)) {
+        throw new Error(`工具 ${tool.name} 参数 ${key} 不在允许范围内`);
+      }
+    }
+  }
+
   private async withTimeout<T>(promise: Promise<T>, timeout: number, name: string): Promise<T> {
     return Promise.race([
       promise,
@@ -106,12 +190,13 @@ export class ToolRegistry {
 export class SearchTool implements ToolDefinition<{ query: string }> {
   name = 'search';
   description = '搜索文本中的关键词与链接';
-  parameters = {
+  parameters: JSONSchema = {
     type: 'object',
     properties: {
       query: { type: 'string' },
     },
     required: ['query'],
+    additionalProperties: false,
   };
   timeout = 8_000;
 
@@ -141,12 +226,13 @@ export class SearchTool implements ToolDefinition<{ query: string }> {
 export class ExtractTool implements ToolDefinition<{ content: string }> {
   name = 'extract';
   description = '提取文本中的结构化信息';
-  parameters = {
+  parameters: JSONSchema = {
     type: 'object',
     properties: {
       content: { type: 'string' },
     },
     required: ['content'],
+    additionalProperties: false,
   };
   timeout = 8_000;
 
@@ -179,12 +265,13 @@ export class ExtractTool implements ToolDefinition<{ content: string }> {
 export class QueryTool implements ToolDefinition<{ query: string }> {
   name = 'query';
   description = '执行轻量查询请求';
-  parameters = {
+  parameters: JSONSchema = {
     type: 'object',
     properties: {
       query: { type: 'string' },
     },
     required: ['query'],
+    additionalProperties: false,
   };
   timeout = 5_000;
 
@@ -210,14 +297,22 @@ export class QueryTool implements ToolDefinition<{ query: string }> {
   }
 }
 
-export const toolRegistry = new ToolRegistry();
+export const defaultToolRegistry = new ToolRegistry();
 
 export function registerTool(tool: ToolDefinition): void {
-  toolRegistry.register(tool);
+  defaultToolRegistry.register(tool);
 }
 
-export function discoverTools(query: string): ToolDefinition[] {
-  return toolRegistry.discover(query);
+export function unregisterTool(name: string): boolean {
+  return defaultToolRegistry.unregister(name);
+}
+
+export function discoverTools(query: string = ''): ToolDefinition[] {
+  return defaultToolRegistry.discover(query);
+}
+
+export function describeTool(name: string): ToolDescriptor | null {
+  return defaultToolRegistry.describe(name);
 }
 
 export async function invokeTool(
@@ -225,7 +320,7 @@ export async function invokeTool(
   params: Record<string, unknown>,
   context?: ToolExecutionContext,
 ): Promise<string> {
-  return toolRegistry.invoke(name, params, context);
+  return defaultToolRegistry.invoke(name, params, context);
 }
 
 registerTool(new SearchTool());

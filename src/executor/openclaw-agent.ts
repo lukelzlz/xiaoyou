@@ -170,6 +170,7 @@ export class OpenClawAgent {
 
   private async waitForCompletion(taskId: string, plan: ExecutionPlan): Promise<PlanResult> {
     const start = Date.now();
+    let pollCount = 0;
 
     while (Date.now() - start < config.openclaw.taskTimeout) {
       const task = await this.getTaskStatus(taskId);
@@ -203,7 +204,18 @@ export class OpenClawAgent {
         throw new XiaoyouError(ErrorCode.TASK_CANCELLED, '任务已取消');
       }
 
-      await new Promise((resolve) => setTimeout(resolve, this.getPollingInterval(plan)));
+      if (mappedStatus === 'paused') {
+        return {
+          planId: plan.planId,
+          status: 'partial',
+          stepResults: this.buildStepResults(plan, task),
+          totalDuration: Date.now() - start,
+          artifacts: task.artifacts ?? [],
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, this.getPollingInterval(plan, pollCount)));
+      pollCount += 1;
     }
 
     throw new XiaoyouError(ErrorCode.LLM_TIMEOUT, 'OpenClaw 执行超时', {
@@ -251,17 +263,18 @@ export class OpenClawAgent {
     });
   }
 
-  private getPollingInterval(plan: ExecutionPlan): number {
+  private getPollingInterval(plan: ExecutionPlan, attempt = 0): number {
     const firstStep = plan.steps[0];
     const retryPolicy = firstStep?.retryPolicy;
     if (!retryPolicy) {
       return 1500;
     }
 
-    return Math.min(
-      Math.max(retryPolicy.retryInterval, 1000),
-      retryPolicy.maxInterval || 5000,
-    );
+    const base = Math.max(retryPolicy.retryInterval, 1000);
+    const multiplier = retryPolicy.backoffMultiplier > 0 ? retryPolicy.backoffMultiplier : 1;
+    const interval = Math.round(base * Math.pow(multiplier, attempt));
+
+    return Math.min(interval, retryPolicy.maxInterval || 5000);
   }
 
   private mapExecutionStatus(task: OpenClawTaskResponse): ExecutionStatus['status'] {
@@ -275,6 +288,8 @@ export class OpenClawAgent {
       case 'running':
       case 'retrying':
         return 'running';
+      case 'paused':
+        return 'paused';
       case 'completed':
         return 'completed';
       case 'failed':
@@ -377,6 +392,15 @@ export class OpenClawAgent {
       currentStep: task.currentStep,
       completedSteps: task.completedSteps ?? [],
       failedSteps: task.failedSteps ?? [],
+      waitingForUser: task.waitingForUser ?? false,
+      updatedAt: new Date(),
+      stepResults: task.stepResults?.map((item) => ({
+        stepId: item.stepId,
+        status: item.status,
+        output: item.output,
+        error: item.error ? new Error(item.error) : undefined,
+        duration: item.duration ?? 0,
+      })),
       error: task.error ? new Error(task.error) : undefined,
     };
   }

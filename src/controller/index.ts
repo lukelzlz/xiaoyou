@@ -8,7 +8,9 @@ import type {
 } from '../types/index.js';
 import { GLMService } from '../llm/glm.js';
 import { HotMemoryStore } from '../memory/hot.js';
+import { metricsService } from '../monitoring/metrics.js';
 import { createChildLogger } from '../utils/logger.js';
+import { pluginManager } from '../plugins/index.js';
 import { IntentRecognizer } from './intent.js';
 import { SceneRouter } from './router.js';
 import { InMemoryContextManager } from './context.js';
@@ -54,8 +56,8 @@ export class ControllerService {
   /**
    * 对外暴露：路由场景
    */
-  routeToScene(intent: EnhancedIntent, message?: ParsedMessage): SceneType {
-    return this.sceneRouter.route(intent, message);
+  routeToScene(intent: EnhancedIntent, message?: ParsedMessage, context?: SessionContext): SceneType {
+    return this.sceneRouter.route(intent, message, context);
   }
 
   /**
@@ -63,7 +65,7 @@ export class ControllerService {
    */
   async manageContext(message: ParsedMessage): Promise<SessionContext> {
     const sessionId = this.getSessionId(message);
-    const context = await this.contextManager.getOrCreate(
+    await this.contextManager.getOrCreate(
       sessionId,
       message.userId,
       message.channelId,
@@ -76,24 +78,29 @@ export class ControllerService {
       lastIntentAt: new Date().toISOString(),
       attachmentCount: message.attachments.length,
       multimodalSummary: message.metadata.multimodalSummary,
+      multimodalCount: message.multimodalContents?.length ?? 0,
     });
 
-    return context;
+    return (await this.contextManager.snapshot(sessionId)) as SessionContext;
   }
 
   /**
    * 处理用户消息
    */
   async handleMessage(message: ParsedMessage): Promise<string> {
+    const startAt = Date.now();
     log.info({ messageId: message.id, userId: message.userId }, '处理消息');
+    metricsService.recordMessage(message.userId);
 
-    const sessionId = this.getSessionId(message);
+    const processedMessage = await pluginManager.executeMessagePreprocess(message);
+    const sessionId = this.getSessionId(processedMessage);
 
     // 1. 管理上下文
-    await this.manageContext(message);
+    const context = await this.manageContext(processedMessage);
 
     // 2. 意图识别
-    const intent = await this.recognizeIntent(message);
+    const rawIntent = await this.recognizeIntent(processedMessage);
+    const intent = await pluginManager.executeIntentPostprocess(rawIntent, processedMessage);
 
     // 3. 将本次识别结果写入上下文变量
     await this.contextManager.setVariable(sessionId, 'lastIntent', intent.type);
@@ -102,25 +109,71 @@ export class ControllerService {
     await this.contextManager.setVariable(sessionId, 'lastEntities', intent.entities);
 
     // 4. 场景路由
-    const scene = this.routeToScene(intent, message);
+    const scene = this.routeToScene(intent, processedMessage, context);
     await this.contextManager.setVariable(sessionId, 'lastScene', scene);
+    await this.contextManager.updateMetadata(sessionId, {
+      lastScene: scene,
+      lastIntentType: intent.type,
+      lastIntentConfidence: intent.confidence,
+    });
+
+    if (scene === 'task') {
+      await this.contextManager.setActiveTask(sessionId, {
+        taskId: `pending:${processedMessage.id}`,
+        description: processedMessage.textContent,
+        status: 'routing',
+        progress: 0,
+      });
+    } else if (context.activeTask) {
+      await this.contextManager.setActiveTask(sessionId, undefined);
+    }
 
     // 5. 获取处理器
     const handler = this.handlers.get(scene);
     if (!handler) {
-      log.warn({ scene, messageId: message.id }, '未找到场景处理器，回退到默认聊天');
-      const fallback = await this.defaultChat(message, intent);
-      await this.recordConversation(message, intent, fallback);
-      return fallback;
+      log.warn({ scene, messageId: processedMessage.id }, '未找到场景处理器，回退到默认聊天');
+      const fallback = await this.defaultChat(processedMessage, intent);
+      const finalFallback = await pluginManager.executeResponsePreprocess(fallback, processedMessage);
+      await this.recordConversation(processedMessage, intent, finalFallback);
+      metricsService.recordRequest({ durationMs: Date.now() - startAt, success: true });
+      return finalFallback;
     }
 
     // 6. 执行处理器
-    const response = await handler.handle(message, intent);
+    let response: string;
+    try {
+      response = await handler.handle(processedMessage, intent);
+      const finalResponse = await pluginManager.executeResponsePreprocess(response, processedMessage);
 
-    // 7. 记录对话
-    await this.recordConversation(message, intent, response);
+      if (scene === 'task') {
+        await this.contextManager.setActiveTask(sessionId, {
+          taskId: `completed:${processedMessage.id}`,
+          description: processedMessage.textContent,
+          status: 'completed',
+          progress: 100,
+        });
+      }
 
-    return response;
+      // 7. 记录对话
+      await this.recordConversation(processedMessage, intent, finalResponse);
+      metricsService.recordRequest({ durationMs: Date.now() - startAt, success: true });
+
+      return finalResponse;
+    } catch (error) {
+      log.error({ scene, messageId: processedMessage.id, error }, '场景处理器执行失败');
+      
+      if (scene === 'task') {
+        await this.contextManager.setActiveTask(sessionId, {
+          taskId: `failed:${processedMessage.id}`,
+          description: processedMessage.textContent,
+          status: 'failed',
+          progress: 0,
+        });
+      }
+      
+      metricsService.recordRequest({ durationMs: Date.now() - startAt, success: false });
+      throw error;
+    }
   }
 
   /**

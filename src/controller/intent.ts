@@ -1,4 +1,4 @@
-import type { ParsedMessage, HotMemory, EnhancedIntent, Sentiment } from '../types/index.js';
+import type { ParsedMessage, HotMemory, EnhancedIntent, Sentiment, Entity } from '../types/index.js';
 import { IntentType } from '../types/index.js';
 import { GLMService } from '../llm/glm.js';
 import { HotMemoryStore } from '../memory/hot.js';
@@ -35,12 +35,24 @@ export class IntentRecognizer {
     // 1. 意图分类 + 实体提取（合并一次 LLM 调用）
     const intentResult = await this.classifyIntent(message, context);
 
-    // 2. 情绪分析（轻量规则 + LLM 回退）
+    // 2. 将多模态提取内容注入实体与原始响应
+    const multimodalEntities = this.extractMultimodalEntities(message);
+    const mergedEntities = this.mergeEntities(intentResult.entities, multimodalEntities);
+
+    // 3. 情绪分析（轻量规则 + LLM 回退）
     const sentiment = this.analyzeSentiment(message.textContent, intentResult);
 
     const enhanced: EnhancedIntent = {
       ...intentResult,
+      entities: mergedEntities,
       sentiment,
+      rawResponse: intentResult.rawResponse
+        ? JSON.stringify({
+            source: 'glm',
+            llm: intentResult.rawResponse,
+            multimodalSummary: message.metadata.multimodalSummary,
+          })
+        : undefined,
     };
 
     log.debug(
@@ -55,13 +67,17 @@ export class IntentRecognizer {
    * 使用 GLM 进行意图分类和实体提取
    */
   private async classifyIntent(message: ParsedMessage, context: string): Promise<EnhancedIntent> {
+    const multimodalSummary = message.metadata.multimodalSummary
+      ? `\n多模态摘要：\n${message.metadata.multimodalSummary}`
+      : '';
+
     const prompt = `
 你是一个意图识别系统。请分析以下用户消息并返回 JSON。
 
 用户消息：${message.textContent}
 上下文：${context}
-附件数量：${message.attachments.length}
-
+附件数量：${message.attachments.length}${multimodalSummary}
+ 
 可选意图：
 - ${IntentType.CHAT_CASUAL} (闲聊)
 - ${IntentType.CHAT_EMOTIONAL} (情感陪伴)
@@ -218,9 +234,9 @@ export class IntentRecognizer {
    * 合并解析器和 LLM 提取的实体，去重
    */
   private mergeEntities(
-    parserEntities: Array<{ type: string; value: string; start: number; end: number; confidence?: number }>,
-    llmEntities: Array<{ type: string; value: string; start: number; end: number; confidence?: number }>,
-  ): Array<{ type: string; value: string; start: number; end: number; confidence?: number }> {
+    parserEntities: Entity[],
+    llmEntities: Entity[],
+  ): Entity[] {
     const seen = new Set(parserEntities.map((e) => `${e.type}:${e.value}`));
     const merged = [...parserEntities];
 
@@ -233,6 +249,40 @@ export class IntentRecognizer {
     }
 
     return merged;
+  }
+
+  private extractMultimodalEntities(message: ParsedMessage): Entity[] {
+    if (!message.multimodalContents?.length) {
+      return [];
+    }
+
+    const textLength = message.textContent.length;
+
+    return message.multimodalContents.flatMap((content, index) => {
+      const entities: Entity[] = [];
+
+      if (content.extractedText) {
+        entities.push({
+          type: `${content.type}_text`,
+          value: content.extractedText,
+          start: textLength,
+          end: textLength + content.extractedText.length,
+          confidence: content.confidence,
+        });
+      }
+
+      for (const label of content.labels ?? []) {
+        entities.push({
+          type: `${content.type}_label`,
+          value: label,
+          start: index,
+          end: index + label.length,
+          confidence: content.confidence,
+        });
+      }
+
+      return entities;
+    });
   }
 
   /**
