@@ -1,5 +1,5 @@
 import { createChildLogger } from '../utils/logger.js';
-import type { EnhancedIntent, ParsedMessage, TaskDescription } from '../types/index.js';
+import type { EnhancedIntent, ParsedMessage, TaskDescription, VectorMemory } from '../types/index.js';
 import { IntentType } from '../types/index.js';
 import { QuickService } from '../llm/quick.js';
 import { PlanService } from '../llm/plan.js';
@@ -11,6 +11,7 @@ import { OpenClawCron } from '../executor/openclaw-cron.js';
 import { invokeTool } from '../tools/index.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
 import type { SceneHandler } from '../controller/index.js';
+import { nanoid } from 'nanoid';
 
 const log = createChildLogger('services');
 
@@ -58,10 +59,59 @@ export class ChatService implements SceneHandler {
 
     const reply = await this.quick.chat(prompt, { systemPrompt });
 
-    // 跟踪会话，供 MemoryFlush 定期归档
+    // 立即将对话存入向量数据库（长期记忆）
+    await this.storeConversation(message, reply, sessionKey, intent);
+
+    // 跟踪会话，供 MemoryFlush 定期清理热记忆
     this.memoryFlush.track(sessionKey);
 
     return reply;
+  }
+
+  /**
+   * 立即将对话存入向量数据库
+   */
+  private async storeConversation(
+    message: ParsedMessage,
+    reply: string,
+    sessionKey: string,
+    intent: EnhancedIntent,
+  ): Promise<void> {
+    try {
+      const content = `用户: ${message.textContent}\n小悠: ${reply}`;
+
+      const memory: VectorMemory = {
+        id: `conv_${nanoid()}`,
+        content,
+        embedding: [],
+        metadata: {
+          type: 'conversation',
+          userId: message.userId,
+          sessionId: sessionKey,
+          importance: this.calculateImportance(intent),
+          accessCount: 0,
+          tags: ['conversation', intent.type.split('.')[0]],
+        },
+        createdAt: new Date(),
+      };
+
+      await this.vectorMemory.store(memory);
+      log.debug({ sessionId: sessionKey }, '对话已存入记忆库');
+    } catch (error) {
+      log.warn({ error, sessionId: sessionKey }, '存入记忆库失败，不影响主流程');
+    }
+  }
+
+  /**
+   * 根据意图计算记忆重要性
+   */
+  private calculateImportance(intent: EnhancedIntent): number {
+    // 任务相关更重要
+    if (intent.type.startsWith('task.')) return 0.8;
+    if (intent.type.startsWith('schedule.')) return 0.8;
+    if (intent.type.startsWith('tool.')) return 0.6;
+    // 普通聊天
+    return 0.5;
   }
 }
 

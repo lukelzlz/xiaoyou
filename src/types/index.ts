@@ -178,7 +178,7 @@ export interface VectorMemory {
 
 // 向量元数据
 export interface VectorMetadata {
-  type: 'conversation' | 'task' | 'preference' | 'knowledge';
+  type: 'conversation' | 'task' | 'preference' | 'knowledge' | 'fact';
   userId: string;
   sessionId?: string;
   taskId?: string;
