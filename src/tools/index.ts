@@ -1,5 +1,6 @@
 import { createChildLogger } from '../utils/logger.js';
 import { createBraveSearchTool } from './brave-search.js';
+import { createMemorySearchTool, createMemoryStoreTool } from './memory.js';
 
 const log = createChildLogger('tools');
 
@@ -188,42 +189,6 @@ export class ToolRegistry {
   }
 }
 
-export class SearchTool implements ToolDefinition<{ query: string }> {
-  name = 'search';
-  description = '搜索文本中的关键词与链接';
-  parameters: JSONSchema = {
-    type: 'object',
-    properties: {
-      query: { type: 'string' },
-    },
-    required: ['query'],
-    additionalProperties: false,
-  };
-  timeout = 8_000;
-
-  async execute(params: { query: string }): Promise<string> {
-    const query = normalizeInput(params.query);
-    log.debug({ query }, '执行搜索');
-
-    const urls = extractUrls(query);
-    const keywords = query
-      .replace(/https?:\/\/[^\s]+/g, '')
-      .split(/[\s,，、]+/)
-      .map((item) => item.trim())
-      .filter((item) => item.length >= 2)
-      .slice(0, 8);
-
-    const lines = [
-      `搜索请求已解析：${query}`,
-      keywords.length > 0 ? `关键词：${keywords.join('、')}` : '关键词：未提取到明显关键词',
-      urls.length > 0 ? `链接：${urls.join('、')}` : '链接：无',
-      '说明：当前为项目内占位实现，后续可接入真实搜索 API。',
-    ];
-
-    return lines.join('\n');
-  }
-}
-
 export class ExtractTool implements ToolDefinition<{ content: string }> {
   name = 'extract';
   description = '提取文本中的结构化信息';
@@ -265,11 +230,11 @@ export class ExtractTool implements ToolDefinition<{ content: string }> {
 
 export class QueryTool implements ToolDefinition<{ query: string }> {
   name = 'query';
-  description = '执行轻量查询请求';
+  description = '执行轻量查询请求，如获取时间、日期等系统信息';
   parameters: JSONSchema = {
     type: 'object',
     properties: {
-      query: { type: 'string' },
+      query: { type: 'string', description: '查询内容，支持：时间、日期' },
     },
     required: ['query'],
     additionalProperties: false,
@@ -283,18 +248,19 @@ export class QueryTool implements ToolDefinition<{ query: string }> {
     const lowered = query.toLowerCase();
 
     if (lowered.includes('time') || query.includes('时间')) {
-      return `查询结果：当前系统时间为 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+      return `当前时间: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
     }
 
     if (lowered.includes('date') || query.includes('日期')) {
-      return `查询结果：今天日期为 ${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+      return `今天日期: ${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
     }
 
-    return [
-      `查询请求：${query}`,
-      '当前为占位查询实现，已完成请求标准化与基础意图匹配。',
-      '后续可接入数据库、业务 API 或第三方服务。',
-    ].join('\n');
+    if (lowered.includes('week') || query.includes('星期') || query.includes('周')) {
+      const days = ['日', '一', '二', '三', '四', '五', '六'];
+      return `今天是星期${days[new Date().getDay()]}`;
+    }
+
+    throw new Error(`不支持的查询类型: ${query}。支持的查询：时间、日期、星期`);
   }
 }
 
@@ -324,7 +290,8 @@ export async function invokeTool(
   return defaultToolRegistry.invoke(name, params, context);
 }
 
-registerTool(new SearchTool());
 registerTool(new ExtractTool());
 registerTool(new QueryTool());
 registerTool(createBraveSearchTool());
+registerTool(createMemorySearchTool());
+registerTool(createMemoryStoreTool());

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ToolRegistry,
-  SearchTool,
+  ExtractTool,
   describeTool,
   discoverTools,
   invokeTool,
@@ -12,10 +12,10 @@ import {
 describe('ToolRegistry', () => {
   it('应该校验必填参数和额外参数', async () => {
     const registry = new ToolRegistry();
-    registry.register(new SearchTool());
+    registry.register(new ExtractTool());
 
-    await expect(registry.invoke('search', {})).rejects.toThrow('缺少必填参数');
-    await expect(registry.invoke('search', { query: '测试', extra: true })).rejects.toThrow('不允许额外参数');
+    await expect(registry.invoke('extract', {})).rejects.toThrow('缺少必填参数');
+    await expect(registry.invoke('extract', { content: '测试', extra: true })).rejects.toThrow('不允许额外参数');
   });
 
   it('应该检查权限并返回工具描述', async () => {
