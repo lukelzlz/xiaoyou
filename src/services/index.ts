@@ -1,8 +1,8 @@
 import { createChildLogger } from '../utils/logger.js';
 import type { EnhancedIntent, ParsedMessage, TaskDescription } from '../types/index.js';
 import { IntentType } from '../types/index.js';
-import { GLMService } from '../llm/glm.js';
-import { NemotronService } from '../llm/nemotron.js';
+import { QuickService } from '../llm/quick.js';
+import { PlanService } from '../llm/plan.js';
 import { HotMemoryStore } from '../memory/hot.js';
 import { VectorMemoryStore } from '../memory/vector.js';
 import { MemoryFlush } from '../memory/flush.js';
@@ -18,7 +18,7 @@ const log = createChildLogger('services');
 
 export class ChatService implements SceneHandler {
   constructor(
-    private glm: GLMService,
+    private quick: QuickService,
     private memory: HotMemoryStore,
     private vectorMemory: VectorMemoryStore,
     private memoryFlush: MemoryFlush,
@@ -56,7 +56,7 @@ export class ChatService implements SceneHandler {
 
     const prompt = `${context ? `历史对话：\n${context}\n` : ''}${longTermContext}\n\n用户（意图: ${intent.type}）：${message.textContent}\n\n请回复：`;
 
-    const reply = await this.glm.chat(prompt, { systemPrompt });
+    const reply = await this.quick.chat(prompt, { systemPrompt });
 
     // 跟踪会话，供 MemoryFlush 定期归档
     this.memoryFlush.track(sessionKey);
@@ -95,12 +95,13 @@ export class ToolService implements SceneHandler {
 // ============ 场景 C：任务服务 ============
 
 import { pluginManager } from '../plugins/index.js';
+import type { SessionInfo } from '../executor/openclaw-agent.js';
 
 import { metricsService } from '../monitoring/metrics.js';
 
 export class TaskService implements SceneHandler {
   constructor(
-    private planner: NemotronService,
+    private planner: PlanService,
     private executor: OpenClawAgent,
     private memoryFlush: MemoryFlush,
   ) {}
@@ -116,12 +117,20 @@ export class TaskService implements SceneHandler {
       availableTools: ['search', 'extract', 'query'],
     };
 
+    // 构建 session 信息用于 OpenClaw 多用户隔离
+    const session: SessionInfo = {
+      sessionId: `${message.channelId}:${message.userId}`,
+      userId: message.userId,
+      channelId: message.channelId,
+      platform: message.platform,
+    };
+
     // 1. 规划
     const plan = await this.planner.createPlan(task);
     log.info({ planId: plan.planId, steps: plan.steps.length }, '任务规划完成');
 
-    // 2. 执行
-    const rawResult = await this.executor.executeTask(plan);
+    // 2. 执行（传递 session 信息）
+    const rawResult = await this.executor.executeTask(plan, session);
     const result = await pluginManager.executeTaskPostprocess(rawResult, message);
 
     // 3. 归档任务结果
@@ -155,7 +164,7 @@ export class TaskService implements SceneHandler {
 
 export class ScheduleService implements SceneHandler {
   constructor(
-    private planner: NemotronService,
+    private planner: PlanService,
     private executor: OpenClawAgent,
     private cron: OpenClawCron,
   ) {}
@@ -194,7 +203,15 @@ export class ScheduleService implements SceneHandler {
         })
       : undefined;
 
-    // 3. 通过 OpenClaw CRON 注册定时任务
+    // 构建 session 信息
+    const session: SessionInfo = {
+      sessionId: `${message.channelId}:${message.userId}`,
+      userId: message.userId,
+      channelId: message.channelId,
+      platform: message.platform,
+    };
+
+    // 3. 通过 OpenClaw CRON 注册定时任务（传递 session）
     const taskId = await this.cron.register(
       rule,
       {
@@ -210,8 +227,9 @@ export class ScheduleService implements SceneHandler {
         name: `UserTask_${message.userId.slice(0, 5)}_${Date.now()}`,
         description: message.textContent,
         notifyOnFailure: true,
-        notifyOnComplete: true, // 增强：支持任务完成时通知
-      }
+        notifyOnComplete: true,
+      },
+      session, // 传递 session 信息
     );
 
     return [

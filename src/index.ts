@@ -2,8 +2,8 @@ import { config } from './config/index.js';
 import { createChildLogger } from './utils/logger.js';
 import { GatewayService } from './gateway/index.js';
 import { ControllerService } from './controller/index.js';
-import { GLMService } from './llm/glm.js';
-import { NemotronService } from './llm/nemotron.js';
+import { QuickService } from './llm/quick.js';
+import { PlanService } from './llm/plan.js';
 import { HotMemoryStore } from './memory/hot.js';
 import { VectorMemoryStore } from './memory/vector.js';
 import { MemoryFlush } from './memory/flush.js';
@@ -22,13 +22,13 @@ async function main() {
   log.info('小悠系统启动中...');
 
   // 初始化核心服务
-  const glm = new GLMService();
-  const nemotron = new NemotronService();
+  const quick = new QuickService();
+  const plan = new PlanService();
   const memory = new HotMemoryStore();
-  const vectorMemory = new VectorMemoryStore(glm);
+  const vectorMemory = new VectorMemoryStore(quick);
   const openclaw = new OpenClawAgent();
   const openclawCron = new OpenClawCron();
-  const gateway = new GatewayService(undefined, glm);
+  const gateway = new GatewayService(undefined, quick);
 
   // 初始化向量数据库
   await vectorMemory.init();
@@ -38,15 +38,15 @@ async function main() {
   memoryFlush.start();
 
   // 初始化控制器
-  const controller = new ControllerService(glm, memory);
+  const controller = new ControllerService(quick, memory);
 
   // 注册场景处理器
-  controller.registerHandler(SceneType.CHAT, new ChatService(glm, memory, vectorMemory, memoryFlush));
+  controller.registerHandler(SceneType.CHAT, new ChatService(quick, memory, vectorMemory, memoryFlush));
   controller.registerHandler(SceneType.TOOL, new ToolService());
-  controller.registerHandler(SceneType.TASK, new TaskService(nemotron, openclaw, memoryFlush));
+  controller.registerHandler(SceneType.TASK, new TaskService(plan, openclaw, memoryFlush));
   controller.registerHandler(
     SceneType.SCHEDULE,
-    new ScheduleService(nemotron, openclaw, openclawCron),
+    new ScheduleService(plan, openclaw, openclawCron),
   );
 
   // 初始化平台适配器

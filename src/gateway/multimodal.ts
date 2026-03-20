@@ -1,5 +1,5 @@
 import type { Attachment, MultimodalContent } from '../types/index.js';
-import { GLMService, type VisionAnalysisResult } from '../llm/glm.js';
+import { QuickService, type VisionAnalysisResult } from '../llm/quick.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('multimodal');
@@ -36,10 +36,10 @@ export interface MultimodalServices {
 }
 
 export class MultimodalExtractor {
-  private readonly glm?: GLMService;
+  private readonly quick?: QuickService;
 
-  constructor(private readonly services: MultimodalServices = {}, glm?: GLMService) {
-    this.glm = glm;
+  constructor(private readonly services: MultimodalServices = {}, quick?: QuickService) {
+    this.quick = quick;
   }
 
   async extract(attachments: Attachment[]): Promise<MultimodalContent[]> {
@@ -125,7 +125,7 @@ export class MultimodalExtractor {
         sourceName: attachment.name,
         mimeType: attachment.mimeType,
         size: attachment.size,
-        provider: this.services.recognizeImage ? 'external' : this.glm ? 'glm-vision' : 'mock',
+        provider: this.services.recognizeImage ? 'external' : this.quick ? 'glm-vision' : 'mock',
       },
     };
   }
@@ -146,7 +146,7 @@ export class MultimodalExtractor {
         mimeType: attachment.mimeType,
         size: attachment.size,
         sourceName: attachment.name,
-        provider: this.services.parseDocument ? 'external' : this.glm ? 'glm-vision' : 'mock',
+        provider: this.services.parseDocument ? 'external' : this.quick ? 'glm-vision' : 'mock',
       },
     };
   }
@@ -191,7 +191,7 @@ export class MultimodalExtractor {
         mimeType: attachment.mimeType,
         size: attachment.size,
         sourceName: attachment.name,
-        provider: this.services.analyzeVideo ? 'external' : this.glm ? 'glm-vision' : 'mock',
+        provider: this.services.analyzeVideo ? 'external' : this.quick ? 'glm-vision' : 'mock',
         duration: null,
         hasAudio: null,
         ...analysis.metadata,
@@ -200,11 +200,11 @@ export class MultimodalExtractor {
   }
 
   private async analyzeWithVisionModel(attachment: Attachment, instruction: string): Promise<OCRResult> {
-    if (!this.glm) {
+    if (!this.quick) {
       return this.mockOCR(attachment);
     }
 
-    const result = await this.glm.analyzeVision(
+    const result = await this.quick.analyzeVision(
       {
         url: attachment.url,
         type: attachment.type,
@@ -222,11 +222,11 @@ export class MultimodalExtractor {
   }
 
   private async parseDocumentWithVisionModel(attachment: Attachment): Promise<DocumentParseResult> {
-    if (!this.glm) {
+    if (!this.quick) {
       return this.mockDocumentParse(attachment);
     }
 
-    const result = await this.glm.analyzeVision(
+    const result = await this.quick.analyzeVision(
       {
         url: attachment.url,
         type: 'document',
@@ -246,11 +246,11 @@ export class MultimodalExtractor {
   }
 
   private async analyzeVideoWithVisionModel(attachment: Attachment): Promise<VideoAnalysisResult> {
-    if (!this.glm) {
+    if (!this.quick) {
       return this.mockVideoAnalysis(attachment);
     }
 
-    const result: VisionAnalysisResult = await this.glm.analyzeVision(
+    const result: VisionAnalysisResult = await this.quick.analyzeVision(
       {
         url: attachment.url,
         type: 'video',

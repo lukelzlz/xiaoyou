@@ -1,6 +1,6 @@
 import type { ParsedMessage, HotMemory, EnhancedIntent, Sentiment, Entity } from '../types/index.js';
 import { IntentType } from '../types/index.js';
-import { GLMService } from '../llm/glm.js';
+import { QuickService } from '../llm/quick.js';
 import { HotMemoryStore } from '../memory/hot.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -16,11 +16,11 @@ const log = createChildLogger('intent');
  *  4. 返回增强的意图结果（EnhancedIntent）
  */
 export class IntentRecognizer {
-  private glm: GLMService;
+  private quick: QuickService;
   private memory: HotMemoryStore;
 
-  constructor(glm: GLMService, memory: HotMemoryStore) {
-    this.glm = glm;
+  constructor(quick: QuickService, memory: HotMemoryStore) {
+    this.quick = quick;
     this.memory = memory;
   }
 
@@ -107,7 +107,7 @@ export class IntentRecognizer {
 }
 `;
 
-    const result = await this.glm.chat(prompt);
+    const result = await this.quick.chat(prompt);
 
     try {
       const parsed = JSON.parse(result) as {

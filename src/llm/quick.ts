@@ -4,7 +4,7 @@ import type { Intent, ParsedMessage } from '../types/index.js';
 import { IntentType } from '../types/index.js';
 import { OpenAICompatibleClient } from './base.js';
 
-const log = createChildLogger('glm');
+const log = createChildLogger('quick');
 
 export interface VisionAnalysisResult {
   text: string;
@@ -13,16 +13,20 @@ export interface VisionAnalysisResult {
   metadata?: Record<string, unknown>;
 }
 
-export class GLMService extends OpenAICompatibleClient {
+/**
+ * Quick 服务（快速响应模型）
+ * 用于聊天、意图识别、视觉分析、向量嵌入
+ */
+export class QuickService extends OpenAICompatibleClient {
   constructor() {
     super({
-      apiKey: config.glm.apiKey,
-      apiUrl: config.glm.apiUrl,
-      model: config.glm.model,
-      visionModel: config.glm.visionModel,
-      maxTokens: config.glm.maxTokens,
-      temperature: config.glm.temperature,
-      timeout: config.glm.timeout,
+      apiKey: config.quick.apiKey,
+      apiUrl: config.quick.apiUrl,
+      model: config.quick.model,
+      visionModel: config.quick.visionModel,
+      maxTokens: config.quick.maxTokens,
+      temperature: config.quick.temperature,
+      timeout: config.quick.timeout,
     });
   }
 
@@ -64,12 +68,12 @@ export class GLMService extends OpenAICompatibleClient {
   async embed(text: string): Promise<number[]> {
     try {
       const response = await this.client.embeddings.create({
-        model: config.glm.embeddingModel,
+        model: config.quick.embeddingModel,
         input: text,
       });
       return response.data[0]?.embedding ?? [];
     } catch (error) {
-      log.error({ error }, 'GLM embedding 调用失败');
+      log.error({ error }, 'Embedding 调用失败');
       throw error;
     }
   }
@@ -130,3 +134,6 @@ export class GLMService extends OpenAICompatibleClient {
     }
   }
 }
+
+// 兼容旧名称
+export const GLMService = QuickService;

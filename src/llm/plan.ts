@@ -11,17 +11,21 @@ import type {
 } from '../types/index.js';
 import { OpenAICompatibleClient } from './base.js';
 
-const log = createChildLogger('nemotron');
+const log = createChildLogger('plan');
 
-export class NemotronService extends OpenAICompatibleClient {
+/**
+ * 规划服务（Plan Service）
+ * 用于任务分解、执行计划生成、CRON 规则生成
+ */
+export class PlanService extends OpenAICompatibleClient {
   constructor() {
     super({
-      apiKey: config.nemotron.apiKey,
-      apiUrl: config.nemotron.apiUrl,
-      model: config.nemotron.model,
-      maxTokens: config.nemotron.maxTokens,
+      apiKey: config.plan.apiKey,
+      apiUrl: config.plan.apiUrl,
+      model: config.plan.model,
+      maxTokens: config.plan.maxTokens,
       temperature: 0.2,
-      timeout: config.nemotron.timeout,
+      timeout: config.plan.timeout,
     });
   }
 
@@ -245,3 +249,6 @@ export class NemotronService extends OpenAICompatibleClient {
     return `为了继续执行，请补充以下必要信息：${grouped}。`;
   }
 }
+
+// 兼容旧名称
+export const NemotronService = PlanService;

@@ -28,37 +28,33 @@
 | `TELEGRAM_WEBHOOK_URL` | 否 | Webhook URL（生产环境推荐） |
 | `TELEGRAM_ALLOWED_CHATS` | 否 | 允许的聊天 ID 列表，逗号分隔 |
 
-### 1.4 GLM-4.5-Air 配置
+### 1.4 Quick 服务配置（快速响应模型）
 
 | 变量名 | 必填 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `GLM_API_KEY` | 是 | - | GLM API 密钥 |
-| `GLM_API_URL` | 是 | - | GLM API 地址 |
-| `MODEL_ID` | 否 | `glm-4.5-air` | 聊天模型 ID（优先级高于 `GLM_MODEL`） |
-| `EMBEDDING_MODEL_ID` | 否 | `text-embedding-3-small` | 向量嵌入模型 ID（优先级高于 `GLM_EMBEDDING_MODEL`） |
-| `VISION_MODEL_ID` | 否 | `glm-4.5-vision` | 多模态视觉模型 ID（优先级高于 `GLM_VISION_MODEL`，未配置时回退到 `MODEL_ID`） |
-| `GLM_MODEL` | 否 | `glm-4.5-air` | （兼容旧配置）聊天模型名称 |
-| `GLM_EMBEDDING_MODEL` | 否 | `text-embedding-3-small` | （兼容旧配置）向量嵌入模型名称 |
-| `GLM_VISION_MODEL` | 否 | `glm-4.5-vision` | （兼容旧配置）多模态视觉模型名称 |
-| `GLM_MAX_TOKENS` | 否 | `4096` | 最大生成 token 数 |
-| `GLM_TEMPERATURE` | 否 | `0.7` | 生成温度 |
-| `GLM_TIMEOUT` | 否 | `30000` | 请求超时（毫秒） |
+| `QUICK_API_KEY` | 是 | - | Quick API 密钥 |
+| `QUICK_API_URL` | 是 | - | Quick API 地址 |
+| `QUICK_MODEL` | 否 | `quick` | 聊天模型名称 |
+| `EMBEDDING_MODEL` | 否 | `embedding` | 向量嵌入模型名称 |
+| `VISION_MODEL` | 否 | `vision` | 多模态视觉模型名称 |
+| `QUICK_MAX_TOKENS` | 否 | `4096` | 最大生成 token 数 |
+| `QUICK_TEMPERATURE` | 否 | `0.7` | 生成温度 |
+| `QUICK_TIMEOUT` | 否 | `30000` | 请求超时（毫秒） |
 
 > **模型配置说明**：
-> - `MODEL_ID`：用于日常聊天、意图识别等文本生成任务
-> - `EMBEDDING_MODEL_ID`：用于将文本转换为向量，支持语义检索和长期记忆
-> - `VISION_MODEL_ID`：用于图片、文档、视频等多模态内容的理解与摘要
-> - 三个模型可独立配置，适配不同场景的性能与成本需求
+> - `QUICK_MODEL`：用于日常聊天、意图识别等文本生成任务
+> - `EMBEDDING_MODEL`：用于将文本转换为向量，支持语义检索和长期记忆
+> - `VISION_MODEL`：用于图片、文档、视频等多模态内容的理解与摘要
 
-### 1.5 Nemotron 配置
+### 1.5 Plan 服务配置（任务规划模型）
 
 | 变量名 | 必填 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `NEMOTRON_API_KEY` | 是 | - | Nemotron API 密钥 |
-| `NEMOTRON_API_URL` | 是 | - | Nemotron API 地址 |
-| `NEMOTRON_MODEL` | 否 | `nemotron-3-super` | 模型名称 |
-| `NEMOTRON_MAX_TOKENS` | 否 | `8192` | 最大生成 token 数 |
-| `NEMOTRON_TIMEOUT` | 否 | `60000` | 请求超时（毫秒） |
+| `PLAN_API_KEY` | 是 | - | Plan API 密钥 |
+| `PLAN_API_URL` | 是 | - | Plan API 地址 |
+| `PLAN_MODEL` | 否 | `plan` | 模型名称 |
+| `PLAN_MAX_TOKENS` | 否 | `8192` | 最大生成 token 数 |
+| `PLAN_TIMEOUT` | 否 | `60000` | 请求超时（毫秒） |
 
 ### 1.6 OpenClaw 配置
 
@@ -212,8 +208,8 @@ export const rateLimitConfig = {
 ```typescript
 // config/fallback.ts
 export const fallbackConfig = {
-  // Nemotron 超时后的降级策略
-  nemotronFallback: {
+  // Plan 超时后的降级策略
+  planFallback: {
     // 超时时间（毫秒）
     timeout: 10000,
     // 重试次数
@@ -325,17 +321,17 @@ DISCORD_GUILD_ID=dev_guild_id
 # Telegram（开发 Bot）
 TELEGRAM_TOKEN=dev_telegram_token
 
-# GLM
-GLM_API_KEY=dev_glm_key
-GLM_API_URL=https://api.glm.ai/v1
-GLM_TEMPERATURE=0.8
-MODEL_ID=glm-4.5-air
-EMBEDDING_MODEL_ID=text-embedding-3-small
-VISION_MODEL_ID=glm-4.5-vision
+# Quick 服务（快速响应）
+QUICK_API_KEY=dev_quick_key
+QUICK_API_URL=https://api.glm.ai/v1
+QUICK_TEMPERATURE=0.8
+QUICK_MODEL=quick
+EMBEDDING_MODEL=embedding
+VISION_MODEL=vision
 
-# Nemotron
-NEMOTRON_API_KEY=dev_nemotron_key
-NEMOTRON_API_URL=https://api.nvidia.com/v1
+# Plan 服务（任务规划）
+PLAN_API_KEY=dev_plan_key
+PLAN_API_URL=https://api.nvidia.com/v1
 
 # OpenClaw
 OPENCLAW_API_URL=http://localhost:8080
@@ -368,17 +364,17 @@ DISCORD_CLIENT_ID=prod_client_id
 TELEGRAM_TOKEN=prod_telegram_token
 TELEGRAM_WEBHOOK_URL=https://api.xiaoyou.com/webhook/telegram
 
-# GLM
-GLM_API_KEY=prod_glm_key
-GLM_API_URL=https://api.glm.ai/v1
-GLM_TEMPERATURE=0.7
-MODEL_ID=glm-4.5-air
-EMBEDDING_MODEL_ID=text-embedding-3-small
-VISION_MODEL_ID=glm-4.5-vision
+# Quick 服务（快速响应）
+QUICK_API_KEY=prod_quick_key
+QUICK_API_URL=https://api.glm.ai/v1
+QUICK_TEMPERATURE=0.7
+QUICK_MODEL=quick
+EMBEDDING_MODEL=embedding
+VISION_MODEL=vision
 
-# Nemotron
-NEMOTRON_API_KEY=prod_nemotron_key
-NEMOTRON_API_URL=https://api.nvidia.com/v1
+# Plan 服务（任务规划）
+PLAN_API_KEY=prod_plan_key
+PLAN_API_URL=https://api.nvidia.com/v1
 
 # OpenClaw
 OPENCLAW_API_URL=https://openclaw.internal:8080

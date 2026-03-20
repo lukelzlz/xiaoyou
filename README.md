@@ -394,8 +394,8 @@ sequenceDiagram
 
 | 组件 | 技术选型 |
 |------|----------|
-| 前台总控 | 可配置聊天模型（默认 `MODEL_ID=glm-4.5-air`） |
-| 规划引擎 | Nemotron-3-Super |
+| 快速响应 | Quick 模型（聊天、意图识别、视觉分析） |
+| 任务规划 | Plan 模型（任务分解、CRON 生成） |
 | 执行引擎 | [OpenClaw Agent](https://docs.openclaw.ai/zh-CN) |
 | 定时调度 | OpenClaw CRON |
 | 短期记忆 | 内存热记忆（可扩展 Redis） |
@@ -409,7 +409,7 @@ sequenceDiagram
 - **网关层**：[`src/gateway/index.ts`](src/gateway/index.ts) 已串联消息解析、多模态提取与限流检查，当前多模态链路以视觉大语言模型接口为核心，并支持将附件摘要注入消息元数据。
 - **控制层**：[`src/controller/intent.ts`](src/controller/intent.ts)、[`src/controller/router.ts`](src/controller/router.ts)、[`src/controller/context.ts`](src/controller/context.ts) 已拆分实现，分别负责意图识别、优先级路由与会话上下文管理。
 - **服务层**：[`src/services/index.ts`](src/services/index.ts) 已提供聊天、工具、复杂任务、定时任务四类场景服务。
-- **执行层**：[`src/llm/nemotron.ts`](src/llm/nemotron.ts)、[`src/executor/openclaw-agent.ts`](src/executor/openclaw-agent.ts)、[`src/executor/openclaw-cron.ts`](src/executor/openclaw-cron.ts) 已支持计划生成、参数校验、执行状态控制与定时调度。
+- **执行层**：[`src/llm/plan.ts`](src/llm/plan.ts)、[`src/executor/openclaw-agent.ts`](src/executor/openclaw-agent.ts)、[`src/executor/openclaw-cron.ts`](src/executor/openclaw-cron.ts) 已支持计划生成、参数校验、执行状态控制与定时调度。
 - **记忆层**：[`src/memory/hot.ts`](src/memory/hot.ts)、[`src/memory/vector.ts`](src/memory/vector.ts)、[`src/memory/flush.ts`](src/memory/flush.ts) 已支持热记忆、向量检索、任务归档与偏好刷新。
 - **工具层**：[`src/tools/index.ts`](src/tools/index.ts) 已重构为可注册、可发现、可鉴权的 Tool Registry。
 - **测试**：已补充 [`tests/unit/router.test.ts`](tests/unit/router.test.ts)、[`tests/unit/context.test.ts`](tests/unit/context.test.ts)、[`tests/unit/multimodal.test.ts`](tests/unit/multimodal.test.ts) 等单元测试。

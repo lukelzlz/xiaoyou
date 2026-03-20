@@ -1,6 +1,10 @@
-import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
+import {
+  getOpenClawRpcClient,
+  type SessionInfo,
+  type TaskOptions,
+} from './openclaw-rpc.js';
 import type {
   ControlAction,
   CronRule,
@@ -13,70 +17,53 @@ import type {
 
 const log = createChildLogger('openclaw-agent');
 
-interface OpenClawTaskResponse {
-  id: string;
-  status?: string;
-  result?: unknown;
-  error?: string;
-  nextExecution?: string;
-  currentStep?: string;
-  completedSteps?: string[];
-  failedSteps?: string[];
-  waitingForUser?: boolean;
-  stepResults?: Array<{
-    stepId: string;
-    status: 'success' | 'failed' | 'skipped';
-    output?: unknown;
-    error?: string;
-    duration?: number;
-  }>;
-  artifacts?: Array<{
-    type: string;
-    name: string;
-    content: string;
-    url?: string;
-  }>;
-}
-
 interface CreateCronInput {
   cronExpression: string;
   timezone: string;
   taskTemplate: Record<string, unknown>;
 }
 
+/**
+ * OpenClaw Agent 执行器
+ *
+ * 通过 WebSocket RPC 与 OpenClaw Gateway 通信
+ * 支持多 session 隔离和任务监控
+ */
 export class OpenClawAgent {
-  private headers: Record<string, string>;
+  private rpc = getOpenClawRpcClient();
 
-  constructor() {
-    this.headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.openclaw.apiKey}`,
-    };
-  }
+  /**
+   * 执行任务计划
+   */
+  async executeTask(plan: ExecutionPlan, session?: SessionInfo): Promise<PlanResult | string> {
+    log.info({ planId: plan.planId, steps: plan.steps.length }, '开始执行任务');
 
-  async executeTask(plan: ExecutionPlan): Promise<PlanResult | string> {
-    const response = await fetch(`${config.openclaw.apiUrl}/tasks`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({
-        type: 'multi_step',
-        plan,
-      }),
-    });
+    try {
+      // 确保 RPC 连接
+      await this.rpc.connect();
 
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.TOOL_ERROR, 'OpenClaw 任务创建失败', {
-        retryable: true,
-        details: { status: response.status },
-      });
+      // 构建步骤
+      const steps = plan.steps.map(step => ({
+        action: step.action,
+        params: step.params,
+      }));
+
+      // 创建任务
+      const { taskId } = await this.rpc.executePlan(plan.planId, steps, { session });
+
+      // 等待完成
+      return this.waitForCompletion(taskId, plan, session);
+    } catch (error) {
+      log.error({ error, planId: plan.planId }, '任务执行失败');
+      throw error;
     }
-
-    const task = (await response.json()) as OpenClawTaskResponse;
-    return this.waitForCompletion(task.id, plan);
   }
 
-  async executePlan(plan: ExecutionPlan): Promise<PlanResult> {
-    const result = await this.executeTask(plan);
+  /**
+   * 执行完整计划
+   */
+  async executePlan(plan: ExecutionPlan, session?: SessionInfo): Promise<PlanResult> {
+    const result = await this.executeTask(plan, session);
     if (typeof result === 'string') {
       return {
         planId: plan.planId,
@@ -89,322 +76,176 @@ export class OpenClawAgent {
     return result;
   }
 
-  async createCronTask(input: CreateCronInput): Promise<OpenClawTaskResponse> {
-    const response = await fetch(`${config.openclaw.apiUrl}/crons`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({
-        expression: input.cronExpression,
+  /**
+   * 创建定时任务
+   */
+  async createCronTask(
+    input: CreateCronInput,
+    session?: SessionInfo,
+  ): Promise<{ id: string }> {
+    log.info({ expression: input.cronExpression }, '创建定时任务');
+
+    await this.rpc.connect();
+
+    const result = await this.rpc.createCronTask(
+      input.cronExpression,
+      input.taskTemplate as { type: string; params: Record<string, unknown> },
+      {
         timezone: input.timezone,
-        task: input.taskTemplate,
-      }),
-    });
+        session,
+      },
+    );
 
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.SCHEDULE_CONFLICT, 'OpenClaw CRON 创建失败');
-    }
-
-    return (await response.json()) as OpenClawTaskResponse;
+    return { id: result.taskId };
   }
 
+  /**
+   * 更新定时任务
+   */
   async updateCronTask(taskId: string, updates: Partial<ScheduleTask>): Promise<void> {
-    const response = await fetch(`${config.openclaw.apiUrl}/crons/${taskId}`, {
-      method: 'PATCH',
-      headers: this.headers,
-      body: JSON.stringify(updates),
-    });
+    await this.rpc.connect();
 
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.SCHEDULE_CONFLICT, 'OpenClaw CRON 更新失败');
+    if (updates.rule?.expression) {
+      await this.rpc.updateCronTask(taskId, {
+        expression: updates.rule.expression,
+        enabled: updates.status === 'active',
+      });
     }
   }
 
+  /**
+   * 删除定时任务
+   */
   async deleteCronTask(taskId: string): Promise<void> {
-    const response = await fetch(`${config.openclaw.apiUrl}/crons/${taskId}`, {
-      method: 'DELETE',
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.SCHEDULE_CONFLICT, 'OpenClaw CRON 删除失败');
-    }
+    await this.rpc.connect();
+    await this.rpc.deleteCronTask(taskId);
   }
 
-  async getTaskStatus(taskId: string): Promise<OpenClawTaskResponse> {
-    const response = await fetch(`${config.openclaw.apiUrl}/tasks/${taskId}`, {
-      method: 'GET',
-      headers: this.headers,
-    });
+  /**
+   * 获取任务状态
+   */
+  async getTaskStatus(taskId: string): Promise<{
+    id: string;
+    status?: string;
+    result?: unknown;
+    error?: string;
+    currentStep?: string;
+    completedSteps?: string[];
+    failedSteps?: string[];
+    waitingForUser?: boolean;
+  }> {
+    await this.rpc.connect();
 
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.NOT_FOUND, 'OpenClaw 任务不存在');
-    }
+    const status = await this.rpc.getTaskStatus(taskId);
 
-    return (await response.json()) as OpenClawTaskResponse;
+    return {
+      id: taskId,
+      status: status.status,
+      result: status.result,
+      error: status.error,
+      currentStep: status.currentStep,
+      completedSteps: status.completedSteps,
+      failedSteps: status.failedSteps,
+      waitingForUser: status.waitingForUser,
+    };
   }
 
+  /**
+   * 推送通知给用户
+   */
   async pushNotification(userId: string, message: string): Promise<void> {
-    const response = await fetch(`${config.openclaw.apiUrl}/notifications`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({
-        userId,
-        message,
-      }),
-    });
+    try {
+      await this.rpc.connect();
 
-    if (!response.ok) {
-      log.warn({ userId }, 'OpenClaw 推送通知失败');
+      // 构建临时的 session 信息
+      const session: SessionInfo = {
+        sessionId: `notify:${userId}`,
+        userId,
+        channelId: userId,
+        platform: 'discord', // 默认使用 discord
+      };
+
+      await this.rpc.sendNotification(session, message);
+    } catch (error) {
+      log.warn({ error, userId }, '推送通知失败');
     }
   }
 
-  async createRule(rule: CronRule, taskTemplate: Record<string, unknown>): Promise<string> {
+  /**
+   * 创建 CRON 规则
+   */
+  async createRule(
+    rule: CronRule,
+    taskTemplate: Record<string, unknown>,
+    session?: SessionInfo,
+  ): Promise<string> {
     const result = await this.createCronTask({
       cronExpression: rule.expression,
       timezone: rule.timezone,
       taskTemplate,
-    });
+    }, session);
 
     return result.id;
   }
 
-  private async waitForCompletion(taskId: string, plan: ExecutionPlan): Promise<PlanResult> {
-    const start = Date.now();
-    let pollCount = 0;
-
-    while (Date.now() - start < config.openclaw.taskTimeout) {
-      const task = await this.getTaskStatus(taskId);
-      const mappedStatus = this.mapExecutionStatus(task);
-
-      if (mappedStatus === 'completed') {
-        return {
-          planId: plan.planId,
-          status: 'success',
-          stepResults: this.buildStepResults(plan, task),
-          totalDuration: Date.now() - start,
-          artifacts: task.artifacts ?? [],
-        };
-      }
-
-      if (mappedStatus === 'waiting_user') {
-        return {
-          planId: plan.planId,
-          status: 'partial',
-          stepResults: this.buildStepResults(plan, task),
-          totalDuration: Date.now() - start,
-          artifacts: task.artifacts ?? [],
-        };
-      }
-
-      if (mappedStatus === 'failed') {
-        throw new XiaoyouError(ErrorCode.TOOL_ERROR, task.error || 'OpenClaw 执行失败');
-      }
-
-      if (mappedStatus === 'cancelled') {
-        throw new XiaoyouError(ErrorCode.TASK_CANCELLED, '任务已取消');
-      }
-
-      if (mappedStatus === 'paused') {
-        return {
-          planId: plan.planId,
-          status: 'partial',
-          stepResults: this.buildStepResults(plan, task),
-          totalDuration: Date.now() - start,
-          artifacts: task.artifacts ?? [],
-        };
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, this.getPollingInterval(plan, pollCount)));
-      pollCount += 1;
-    }
-
-    throw new XiaoyouError(ErrorCode.LLM_TIMEOUT, 'OpenClaw 执行超时', {
-      retryable: true,
-    });
-  }
-
-  private buildStepResults(plan: ExecutionPlan, task: OpenClawTaskResponse): StepResult[] {
-    const provided = new Map((task.stepResults ?? []).map((item) => [item.stepId, item]));
-
-    return plan.steps.map((step) => {
-      const remote = provided.get(step.stepId);
-      if (remote) {
-        return {
-          stepId: step.stepId,
-          status: remote.status,
-          output: remote.output,
-          error: remote.error ? new Error(remote.error) : undefined,
-          duration: remote.duration ?? 0,
-        };
-      }
-
-      if ((task.completedSteps ?? []).includes(step.stepId)) {
-        return {
-          stepId: step.stepId,
-          status: 'success',
-          duration: 0,
-        };
-      }
-
-      if ((task.failedSteps ?? []).includes(step.stepId)) {
-        return {
-          stepId: step.stepId,
-          status: 'failed',
-          error: task.error ? new Error(task.error) : undefined,
-          duration: 0,
-        };
-      }
-
-      return {
-        stepId: step.stepId,
-        status: 'skipped',
-        duration: 0,
-      };
-    });
-  }
-
-  private getPollingInterval(plan: ExecutionPlan, attempt = 0): number {
-    const firstStep = plan.steps[0];
-    const retryPolicy = firstStep?.retryPolicy;
-    if (!retryPolicy) {
-      return 1500;
-    }
-
-    const base = Math.max(retryPolicy.retryInterval, 1000);
-    const multiplier = retryPolicy.backoffMultiplier > 0 ? retryPolicy.backoffMultiplier : 1;
-    const interval = Math.round(base * Math.pow(multiplier, attempt));
-
-    return Math.min(interval, retryPolicy.maxInterval || 5000);
-  }
-
-  private mapExecutionStatus(task: OpenClawTaskResponse): ExecutionStatus['status'] {
-    if (task.waitingForUser || task.status === 'waiting_user') {
-      return 'waiting_user';
-    }
-
-    switch (task.status) {
-      case 'pending':
-        return 'pending';
-      case 'running':
-      case 'retrying':
-        return 'running';
-      case 'paused':
-        return 'paused';
-      case 'completed':
-        return 'completed';
-      case 'failed':
-        return 'failed';
-      case 'cancelled':
-        return 'cancelled';
-      default:
-        return 'pending';
-    }
-  }
-
-  private resolveControlEndpoint(taskId: string, action: ControlAction): string {
-    switch (action) {
-      case 'pause':
-        return `${config.openclaw.apiUrl}/tasks/${taskId}/pause`;
-      case 'resume':
-        return `${config.openclaw.apiUrl}/tasks/${taskId}/resume`;
-      case 'retry':
-        return `${config.openclaw.apiUrl}/tasks/${taskId}/retry`;
-      case 'cancel':
-        return `${config.openclaw.apiUrl}/tasks/${taskId}`;
-      default:
-        return `${config.openclaw.apiUrl}/tasks/${taskId}`;
-    }
-  }
-
-  // ============ 执行控制方法 ============
-
+  /**
+   * 暂停任务
+   */
   async pause(planId: string): Promise<void> {
-    log.info({ planId }, '暂停执行计划');
-    const response = await fetch(this.resolveControlEndpoint(planId, 'pause'), {
-      method: 'POST',
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.INTERNAL, '暂停任务失败', {
-        details: { planId, status: response.status },
-      });
-    }
+    log.info({ planId }, '暂停任务');
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'pause');
   }
 
+  /**
+   * 恢复任务
+   */
   async resume(planId: string): Promise<void> {
-    log.info({ planId }, '恢复执行计划');
-    const response = await fetch(this.resolveControlEndpoint(planId, 'resume'), {
-      method: 'POST',
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.INTERNAL, '恢复任务失败', {
-        details: { planId, status: response.status },
-      });
-    }
+    log.info({ planId }, '恢复任务');
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'resume');
   }
 
+  /**
+   * 取消任务
+   */
   async cancel(planId: string): Promise<void> {
-    log.info({ planId }, '取消执行计划');
-    const response = await fetch(this.resolveControlEndpoint(planId, 'cancel'), {
-      method: 'DELETE',
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.INTERNAL, '取消任务失败', {
-        details: { planId, status: response.status },
-      });
-    }
+    log.info({ planId }, '取消任务');
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'cancel');
   }
 
+  /**
+   * 重试任务
+   */
   async retry(planId: string): Promise<void> {
-    log.info({ planId }, '重试执行计划');
-    const response = await fetch(this.resolveControlEndpoint(planId, 'retry'), {
-      method: 'POST',
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.INTERNAL, '重试任务失败', {
-        details: { planId, status: response.status },
-      });
-    }
+    log.info({ planId }, '重试任务');
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'retry');
   }
 
+  /**
+   * 获取执行状态
+   */
   async getStatus(planId: string): Promise<ExecutionStatus> {
-    const response = await fetch(`${config.openclaw.apiUrl}/tasks/${planId}`, {
-      method: 'GET',
-      headers: this.headers,
-    });
+    await this.rpc.connect();
 
-    if (!response.ok) {
-      throw new XiaoyouError(ErrorCode.NOT_FOUND, '任务不存在', {
-        details: { planId },
-      });
-    }
+    const task = await this.rpc.getTaskStatus(planId);
 
-    const task = (await response.json()) as OpenClawTaskResponse;
     return {
-      status: this.mapExecutionStatus(task),
+      status: this.mapStatus(task.status),
       currentStep: task.currentStep,
       completedSteps: task.completedSteps ?? [],
       failedSteps: task.failedSteps ?? [],
       waitingForUser: task.waitingForUser ?? false,
       updatedAt: new Date(),
-      stepResults: task.stepResults?.map((item) => ({
-        stepId: item.stepId,
-        status: item.status,
-        output: item.output,
-        error: item.error ? new Error(item.error) : undefined,
-        duration: item.duration ?? 0,
-      })),
       error: task.error ? new Error(task.error) : undefined,
     };
   }
 
+  /**
+   * 统一控制接口
+   */
   async control(planId: string, action: ControlAction): Promise<void> {
     switch (action) {
       case 'pause':
@@ -419,4 +260,152 @@ export class OpenClawAgent {
         throw new XiaoyouError(ErrorCode.INVALID_INPUT, `不支持的控制动作: ${action}`);
     }
   }
+
+  /**
+   * 获取运行中的任务数量
+   */
+  getRunningTaskCount(): number {
+    return this.rpc.getRunningTaskCount();
+  }
+
+  /**
+   * 获取用户的运行中任务
+   */
+  getUserTasks(userId: string): Array<{
+    taskId: string;
+    planId: string;
+    status: string;
+    startTime: number;
+  }> {
+    return this.rpc.getUserTasks(userId).map(t => ({
+      taskId: t.taskId,
+      planId: t.planId,
+      status: t.status,
+      startTime: t.startTime,
+    }));
+  }
+
+  /**
+   * 等待任务完成
+   */
+  private async waitForCompletion(
+    taskId: string,
+    plan: ExecutionPlan,
+    session?: SessionInfo,
+  ): Promise<PlanResult> {
+    const start = Date.now();
+    const timeout = 300000; // 5 分钟超时
+
+    while (Date.now() - start < timeout) {
+      const task = await this.rpc.getTaskStatus(taskId);
+      const mappedStatus = this.mapStatus(task.status);
+
+      if (mappedStatus === 'completed') {
+        return {
+          planId: plan.planId,
+          status: 'success',
+          stepResults: this.buildStepResults(plan, task),
+          totalDuration: Date.now() - start,
+          artifacts: task.result ? [{ type: 'text', name: 'result', content: String(task.result) }] : [],
+        };
+      }
+
+      if (mappedStatus === 'waiting_user') {
+        return {
+          planId: plan.planId,
+          status: 'partial',
+          stepResults: this.buildStepResults(plan, task),
+          totalDuration: Date.now() - start,
+          artifacts: [],
+        };
+      }
+
+      if (mappedStatus === 'failed') {
+        throw new XiaoyouError(ErrorCode.TOOL_ERROR, task.error || '任务执行失败');
+      }
+
+      if (mappedStatus === 'cancelled') {
+        throw new XiaoyouError(ErrorCode.TASK_CANCELLED, '任务已取消');
+      }
+
+      if (mappedStatus === 'paused') {
+        return {
+          planId: plan.planId,
+          status: 'partial',
+          stepResults: this.buildStepResults(plan, task),
+          totalDuration: Date.now() - start,
+          artifacts: [],
+        };
+      }
+
+      // 等待后重试
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    throw new XiaoyouError(ErrorCode.LLM_TIMEOUT, '任务执行超时', { retryable: true });
+  }
+
+  /**
+   * 构建步骤结果
+   */
+  private buildStepResults(
+    plan: ExecutionPlan,
+    task: { completedSteps?: string[]; failedSteps?: string[]; result?: unknown },
+  ): StepResult[] {
+    const completedSteps = new Set(task.completedSteps ?? []);
+    const failedSteps = new Set(task.failedSteps ?? []);
+
+    return plan.steps.map(step => {
+      if (completedSteps.has(step.stepId)) {
+        return {
+          stepId: step.stepId,
+          status: 'success' as const,
+          duration: 0,
+        };
+      }
+
+      if (failedSteps.has(step.stepId)) {
+        return {
+          stepId: step.stepId,
+          status: 'failed' as const,
+          error: task.result ? new Error(String(task.result)) : undefined,
+          duration: 0,
+        };
+      }
+
+      return {
+        stepId: step.stepId,
+        status: 'skipped' as const,
+        duration: 0,
+      };
+    });
+  }
+
+  /**
+   * 映射状态
+   */
+  private mapStatus(status?: string): ExecutionStatus['status'] {
+    switch (status) {
+      case 'pending':
+        return 'pending';
+      case 'running':
+      case 'retrying':
+        return 'running';
+      case 'paused':
+        return 'paused';
+      case 'completed':
+        return 'completed';
+      case 'failed':
+        return 'failed';
+      case 'cancelled':
+        return 'cancelled';
+      case 'waiting_user':
+        return 'waiting_user';
+      default:
+        return 'pending';
+    }
+  }
 }
+
+// 重新导出 SessionInfo 类型
+export type { SessionInfo };

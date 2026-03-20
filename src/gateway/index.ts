@@ -2,7 +2,7 @@ import { MessageParser } from './parser.js';
 import { MultimodalExtractor, type MultimodalServices } from './multimodal.js';
 import { RateLimiter } from './ratelimit.js';
 import type { ParsedMessage, RawMessage, Attachment } from '../types/index.js';
-import type { GLMService } from '../llm/glm.js';
+import type { QuickService } from '../llm/quick.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('gateway');
@@ -12,9 +12,9 @@ export class GatewayService {
   private multimodal: MultimodalExtractor;
   private rateLimiter: RateLimiter;
 
-  constructor(multimodalServices?: MultimodalServices, glm?: GLMService) {
+  constructor(multimodalServices?: MultimodalServices, quick?: QuickService) {
     this.parser = new MessageParser();
-    this.multimodal = new MultimodalExtractor(multimodalServices, glm);
+    this.multimodal = new MultimodalExtractor(multimodalServices, quick);
     this.rateLimiter = new RateLimiter();
   }
 

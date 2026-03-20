@@ -6,7 +6,7 @@ import type {
   SceneType,
   SessionContext,
 } from '../types/index.js';
-import { GLMService } from '../llm/glm.js';
+import { QuickService } from '../llm/quick.js';
 import { HotMemoryStore } from '../memory/hot.js';
 import { metricsService } from '../monitoring/metrics.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -31,13 +31,13 @@ export class ControllerService {
   private sceneRouter: SceneRouter;
   private contextManager: InMemoryContextManager;
   private memory: HotMemoryStore;
-  private glm: GLMService;
+  private quick: QuickService;
   private handlers: Map<SceneType, SceneHandler> = new Map();
 
-  constructor(glm: GLMService, memory: HotMemoryStore) {
-    this.glm = glm;
+  constructor(quick: QuickService, memory: HotMemoryStore) {
+    this.quick = quick;
     this.memory = memory;
-    this.intentRecognizer = new IntentRecognizer(glm, memory);
+    this.intentRecognizer = new IntentRecognizer(quick, memory);
     this.sceneRouter = new SceneRouter();
     this.contextManager = new InMemoryContextManager();
   }
@@ -199,7 +199,7 @@ export class ControllerService {
     const sentimentLine = intent?.sentiment ? `\n用户情绪：${intent.sentiment.type}` : '';
     const prompt = `历史对话：\n${context}${sentimentLine}\n\n用户：${message.textContent}\n\n请回复：`;
 
-    return this.glm.chat(prompt, { systemPrompt: '你是小悠，一个友好、智能、会结合上下文和用户情绪回应的 AI 助手。' });
+    return this.quick.chat(prompt, { systemPrompt: '你是小悠，一个友好、智能、会结合上下文和用户情绪回应的 AI 助手。' });
   }
 
   private async recordConversation(

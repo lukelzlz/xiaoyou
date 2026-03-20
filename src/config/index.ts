@@ -20,21 +20,21 @@ const configSchema = z.object({
     apiUrl: z.string().optional(),
   }),
 
-  glm: z.object({
+  quick: z.object({
     apiKey: z.string(),
     apiUrl: z.string().url(),
-    model: z.string().default('glm-4.5-air'),
-    embeddingModel: z.string().default('text-embedding-3-small'),
-    visionModel: z.string().default('glm-4.5-air'),
+    model: z.string().default('quick'),
+    embeddingModel: z.string().default('embedding'),
+    visionModel: z.string().default('vision'),
     maxTokens: z.number().default(4096),
     temperature: z.number().default(0.7),
     timeout: z.number().default(30000),
   }),
 
-  nemotron: z.object({
+  plan: z.object({
     apiKey: z.string(),
     apiUrl: z.string().url(),
-    model: z.string().default('nemotron-3-super'),
+    model: z.string().default('plan'),
     maxTokens: z.number().default(8192),
     timeout: z.number().default(60000),
   }),
@@ -81,23 +81,23 @@ export const config = configSchema.parse({
     apiUrl: process.env.TELEGRAM_API_URL,
   },
 
-  glm: {
-    apiKey: process.env.GLM_API_KEY || '',
-    apiUrl: process.env.GLM_API_URL || 'https://api.glm.ai/v1',
-    model: process.env.MODEL_ID || process.env.GLM_MODEL || 'glm-4.5-air',
-    embeddingModel: process.env.EMBEDDING_MODEL_ID || process.env.GLM_EMBEDDING_MODEL || 'text-embedding-3-small',
-    visionModel: process.env.VISION_MODEL_ID || process.env.GLM_VISION_MODEL || process.env.MODEL_ID || process.env.GLM_MODEL || 'glm-4.5-vision',
-    maxTokens: parseInt(process.env.GLM_MAX_TOKENS || '4096'),
-    temperature: parseFloat(process.env.GLM_TEMPERATURE || '0.7'),
-    timeout: parseInt(process.env.GLM_TIMEOUT || '30000'),
+  quick: {
+    apiKey: process.env.QUICK_API_KEY || process.env.GLM_API_KEY || '',
+    apiUrl: process.env.QUICK_API_URL || process.env.GLM_API_URL || 'https://api.glm.ai/v1',
+    model: process.env.QUICK_MODEL || process.env.MODEL_ID || 'quick',
+    embeddingModel: process.env.EMBEDDING_MODEL || 'embedding',
+    visionModel: process.env.VISION_MODEL || 'vision',
+    maxTokens: parseInt(process.env.QUICK_MAX_TOKENS || process.env.GLM_MAX_TOKENS || '4096'),
+    temperature: parseFloat(process.env.QUICK_TEMPERATURE || process.env.GLM_TEMPERATURE || '0.7'),
+    timeout: parseInt(process.env.QUICK_TIMEOUT || process.env.GLM_TIMEOUT || '30000'),
   },
 
-  nemotron: {
-    apiKey: process.env.NEMOTRON_API_KEY || '',
-    apiUrl: process.env.NEMOTRON_API_URL || 'https://api.nvidia.com/v1',
-    model: process.env.NEMOTRON_MODEL || 'nemotron-3-super',
-    maxTokens: parseInt(process.env.NEMOTRON_MAX_TOKENS || '8192'),
-    timeout: parseInt(process.env.NEMOTRON_TIMEOUT || '60000'),
+  plan: {
+    apiKey: process.env.PLAN_API_KEY || process.env.NEMOTRON_API_KEY || '',
+    apiUrl: process.env.PLAN_API_URL || process.env.NEMOTRON_API_URL || 'https://api.nvidia.com/v1',
+    model: process.env.PLAN_MODEL || process.env.NEMOTRON_MODEL || 'plan',
+    maxTokens: parseInt(process.env.PLAN_MAX_TOKENS || process.env.NEMOTRON_MAX_TOKENS || '8192'),
+    timeout: parseInt(process.env.PLAN_TIMEOUT || process.env.NEMOTRON_TIMEOUT || '60000'),
   },
 
   openclaw: {
