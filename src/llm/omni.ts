@@ -6,7 +6,7 @@
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
 import { OpenAICompatibleClient } from './base.js';
-import type { VisionAnalysisResult } from './chat.js';
+import type { VisionAnalysisResult } from './quick.js';
 
 const log = createChildLogger('omni');
 
@@ -33,7 +33,7 @@ export class OmniService extends OpenAICompatibleClient {
   }
 
   /**
-   * 分析图片/文档
+   * 分析图片/文档/视频
    */
   async analyzeVision(
     input: { url: string; type: 'image' | 'document' | 'video'; name?: string; mimeType?: string },
@@ -73,16 +73,19 @@ export class OmniService extends OpenAICompatibleClient {
     input: { url: string; name?: string; mimeType?: string },
   ): Promise<AudioTranscriptionResult> {
     try {
-      // 使用音频 URL 进行转录
+      const audioFile = await this.fetchAudioFile(input.url);
+
+      // 使用 OpenAI 兼容的音频转录 API
       const response = await this.client.audio.transcriptions.create({
         model: config.omni.model,
-        file: await this.fetchAudioFile(input.url),
+        file: audioFile,
       });
 
       return {
         text: response.text,
         confidence: 0.9,
-        language: response.language,
+        // OpenAI Transcription API 不返回 language，需要从文件名或其他方式推断
+        language: undefined,
       };
     } catch (error) {
       log.error({ error, url: input.url }, '音频转录失败');

@@ -1,7 +1,7 @@
 import { createChildLogger } from '../utils/logger.js';
 import type { EnhancedIntent, ParsedMessage, TaskDescription, VectorMemory } from '../types/index.js';
 import { IntentType } from '../types/index.js';
-import { ChatService } from '../llm/quick.js';
+import { ChatService as LLMChatService } from '../llm/quick.js';
 import { PlanService } from '../llm/plan.js';
 import { HotMemoryStore } from '../memory/hot.js';
 import { VectorMemoryStore } from '../memory/vector.js';
@@ -19,7 +19,7 @@ const log = createChildLogger('services');
 
 export class ChatService implements SceneHandler {
   constructor(
-    private chat: ChatService,
+    private llm: LLMChatService,
     private memory: HotMemoryStore,
     private vectorMemory: VectorMemoryStore,
     private memoryFlush: MemoryFlush,
@@ -57,7 +57,7 @@ export class ChatService implements SceneHandler {
 
     const prompt = `${context ? `历史对话：\n${context}\n` : ''}${longTermContext}\n\n用户（意图: ${intent.type}）：${message.textContent}\n\n请回复：`;
 
-    const reply = await this.chat.chat(prompt, { systemPrompt });
+    const reply = await this.llm.chat(prompt, { systemPrompt });
 
     // 立即将对话存入向量数据库（长期记忆）
     await this.storeConversation(message, reply, sessionKey, intent);

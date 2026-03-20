@@ -1,7 +1,7 @@
 import dns from 'node:dns';
 import type { Attachment, MultimodalContent } from '../types/index.js';
 import { OmniService, type AudioTranscriptionResult as OmniAudioResult } from '../llm/omni.js';
-import type { VisionAnalysisResult } from '../llm/chat.js';
+import type { VisionAnalysisResult } from '../llm/quick.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('multimodal');
