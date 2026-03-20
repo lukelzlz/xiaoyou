@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MultimodalExtractor } from '../../src/gateway/multimodal.js';
 import { GatewayService } from '../../src/gateway/index.js';
-import { GLMService } from '../../src/llm/glm.js';
+import { OmniService } from '../../src/llm/omni.js';
 import type { Attachment, RawMessage } from '../../src/types/index.js';
 
 describe('MultimodalExtractor', () => {
@@ -74,16 +74,16 @@ describe('MultimodalExtractor', () => {
   });
 
   it('应该支持基于视觉大语言模型提取图片内容', async () => {
-    const glm = {
+    const omni = {
       analyzeVision: vi.fn().mockResolvedValue({
         text: '截图中显示 TypeScript 编译错误',
         labels: ['screenshot', 'error'],
         confidence: 0.93,
         metadata: { scene: 'terminal' },
       }),
-    } as unknown as GLMService;
+    } as unknown as OmniService;
 
-    const extractor = new MultimodalExtractor({}, glm);
+    const extractor = new MultimodalExtractor({}, omni);
     const result = await extractor.extract([
       {
         type: 'image',
@@ -96,7 +96,7 @@ describe('MultimodalExtractor', () => {
       extractedText: '截图中显示 TypeScript 编译错误',
       labels: ['screenshot', 'error'],
       confidence: 0.93,
-      metadata: { provider: 'glm-vision' },
+      metadata: { provider: 'omni' },
     });
   });
 
@@ -147,17 +147,17 @@ describe('MultimodalExtractor', () => {
     expect(parsed.multimodalContents).toHaveLength(1);
   });
 
-  it('网关在注入 GLM 时应优先走视觉模型链路', async () => {
-    const glm = {
+  it('网关在注入 Omni 服务时应优先走视觉模型链路', async () => {
+    const omni = {
       analyzeVision: vi.fn().mockResolvedValue({
         text: '视觉模型识别到控制台报错堆栈',
         labels: ['console', 'error'],
         confidence: 0.96,
         metadata: { scene: 'terminal' },
       }),
-    } as unknown as GLMService;
+    } as unknown as OmniService;
 
-    const gateway = new GatewayService(undefined, glm);
+    const gateway = new GatewayService(undefined, omni);
     const raw: RawMessage = {
       platform: 'discord',
       channelId: 'c1',
@@ -175,9 +175,9 @@ describe('MultimodalExtractor', () => {
 
     const parsed = await gateway.parseMessage(raw);
 
-    expect(glm.analyzeVision).toHaveBeenCalledTimes(1);
+    expect(omni.analyzeVision).toHaveBeenCalledTimes(1);
     expect(parsed.metadata.multimodalSummary).toContain('视觉模型识别到控制台报错堆栈');
-    expect(parsed.multimodalContents?.[0].metadata).toMatchObject({ provider: 'glm-vision' });
+    expect(parsed.multimodalContents?.[0].metadata).toMatchObject({ provider: 'omni' });
   });
 
   it('当单个附件提取失败时应该返回错误 metadata 而不是整体抛错', async () => {

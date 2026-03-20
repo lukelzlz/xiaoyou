@@ -1,6 +1,6 @@
 import type { ParsedMessage, HotMemory, EnhancedIntent, Sentiment, Entity } from '../types/index.js';
 import { IntentType } from '../types/index.js';
-import { QuickService } from '../llm/quick.js';
+import { ChatService } from '../llm/quick.js';
 import { HotMemoryStore } from '../memory/hot.js';
 import { createChildLogger } from '../utils/logger.js';
 import { safeJsonParse } from '../utils/json.js';
@@ -17,11 +17,11 @@ const log = createChildLogger('intent');
  *  4. 返回增强的意图结果（EnhancedIntent）
  */
 export class IntentRecognizer {
-  private quick: QuickService;
+  private chat: ChatService;
   private memory: HotMemoryStore;
 
-  constructor(quick: QuickService, memory: HotMemoryStore) {
-    this.quick = quick;
+  constructor(chat: ChatService, memory: HotMemoryStore) {
+    this.chat = chat;
     this.memory = memory;
   }
 
@@ -49,7 +49,7 @@ export class IntentRecognizer {
       sentiment,
       rawResponse: intentResult.rawResponse
         ? JSON.stringify({
-            source: 'glm',
+            source: 'chat',
             llm: intentResult.rawResponse,
             multimodalSummary: message.metadata.multimodalSummary,
           })
@@ -65,7 +65,7 @@ export class IntentRecognizer {
   }
 
   /**
-   * 使用 GLM 进行意图分类和实体提取
+   * 使用聊天模型进行意图分类和实体提取
    */
   private async classifyIntent(message: ParsedMessage, context: string): Promise<EnhancedIntent> {
     const multimodalSummary = message.metadata.multimodalSummary
@@ -108,7 +108,7 @@ export class IntentRecognizer {
 }
 `;
 
-    const result = await this.quick.chat(prompt);
+    const result = await this.chat.chat(prompt);
 
     const parsed = safeJsonParse<{
       intent?: IntentType;

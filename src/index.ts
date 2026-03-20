@@ -2,7 +2,8 @@ import { config } from './config/index.js';
 import { createChildLogger } from './utils/logger.js';
 import { GatewayService } from './gateway/index.js';
 import { ControllerService } from './controller/index.js';
-import { QuickService } from './llm/quick.js';
+import { ChatService } from './llm/quick.js';
+import { OmniService } from './llm/omni.js';
 import { PlanService } from './llm/plan.js';
 import { HotMemoryStore } from './memory/hot.js';
 import { VectorMemoryStore } from './memory/vector.js';
@@ -11,7 +12,7 @@ import { OpenClawAgent } from './executor/openclaw-agent.js';
 import { OpenClawCron } from './executor/openclaw-cron.js';
 import { DiscordAdapter } from './adapters/discord/index.js';
 import { TelegramAdapter } from './adapters/telegram/index.js';
-import { ChatService, ToolService, TaskService, ScheduleService } from './services/index.js';
+import { ChatService as ChatSceneService, ToolService, TaskService, ScheduleService } from './services/index.js';
 import { SceneType } from './types/index.js';
 import type { PlatformAdapter } from './types/index.js';
 import { startHealthServer } from './health.js';
@@ -22,13 +23,14 @@ async function main() {
   log.info('小悠系统启动中...');
 
   // 初始化核心服务
-  const quick = new QuickService();
+  const chat = new ChatService();
+  const omni = new OmniService();
   const plan = new PlanService();
   const memory = new HotMemoryStore();
-  const vectorMemory = new VectorMemoryStore(quick);
+  const vectorMemory = new VectorMemoryStore(chat);
   const openclaw = new OpenClawAgent();
   const openclawCron = new OpenClawCron();
-  const gateway = new GatewayService(undefined, quick);
+  const gateway = new GatewayService(undefined, omni);
 
   // 初始化向量数据库
   await vectorMemory.init();
@@ -38,10 +40,10 @@ async function main() {
   memoryFlush.start();
 
   // 初始化控制器
-  const controller = new ControllerService(quick, memory);
+  const controller = new ControllerService(chat, memory);
 
   // 注册场景处理器
-  controller.registerHandler(SceneType.CHAT, new ChatService(quick, memory, vectorMemory, memoryFlush));
+  controller.registerHandler(SceneType.CHAT, new ChatSceneService(chat, memory, vectorMemory, memoryFlush));
   controller.registerHandler(SceneType.TOOL, new ToolService());
   controller.registerHandler(SceneType.TASK, new TaskService(plan, openclaw, memoryFlush));
   controller.registerHandler(

@@ -2,7 +2,7 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import { config } from '../config/index.js';
 import type { RetrievalStrategy, VectorMemory, VectorMetadata } from '../types/index.js';
 import { createChildLogger } from '../utils/logger.js';
-import { QuickService } from '../llm/quick.js';
+import { ChatService } from '../llm/quick.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
 
 const log = createChildLogger('vector-memory');
@@ -10,15 +10,15 @@ const log = createChildLogger('vector-memory');
 export class VectorMemoryStore {
   private client: QdrantClient;
   private collection: string;
-  private quick: QuickService;
+  private chat: ChatService;
 
-  constructor(quick: QuickService) {
+  constructor(chat: ChatService) {
     this.client = new QdrantClient({
       url: config.qdrant.url,
       apiKey: config.qdrant.apiKey,
     });
     this.collection = config.qdrant.collection;
-    this.quick = quick;
+    this.chat = chat;
   }
 
   async init(): Promise<void> {
@@ -53,7 +53,7 @@ export class VectorMemoryStore {
   }
 
   async store(memory: VectorMemory): Promise<void> {
-    const vector = await this.quick.embed(memory.content);
+    const vector = await this.chat.embed(memory.content);
 
     await this.client.upsert(this.collection, {
       wait: true,
@@ -101,7 +101,7 @@ export class VectorMemoryStore {
     }
 
     // 默认使用相似度或混合
-    const queryVector = await this.quick.embed(query);
+    const queryVector = await this.chat.embed(query);
 
     const results = await this.client.search(this.collection, {
       vector: queryVector,

@@ -20,17 +20,27 @@ const configSchema = z.object({
     apiUrl: z.string().optional(),
   }),
 
-  quick: z.object({
+  // 聊天服务 - 快速响应
+  chat: z.object({
     apiKey: z.string(),
     apiUrl: z.string().url(),
-    model: z.string().default('quick'),
+    model: z.string().default('chat'),
     embeddingModel: z.string().default('embedding'),
-    visionModel: z.string().default('vision'),
     maxTokens: z.number().default(4096),
     temperature: z.number().default(0.7),
     timeout: z.number().default(30000),
   }),
 
+  // 多模态服务 - 视觉+音频识别 (omni 模型)
+  omni: z.object({
+    apiKey: z.string(),
+    apiUrl: z.string().url(),
+    model: z.string().default('omni'),
+    maxTokens: z.number().default(4096),
+    timeout: z.number().default(60000),
+  }),
+
+  // 规划服务 - 复杂任务规划
   plan: z.object({
     apiKey: z.string(),
     apiUrl: z.string().url(),
@@ -86,23 +96,30 @@ export const config = configSchema.parse({
     apiUrl: process.env.TELEGRAM_API_URL,
   },
 
-  quick: {
-    apiKey: process.env.QUICK_API_KEY || process.env.GLM_API_KEY || '',
-    apiUrl: process.env.QUICK_API_URL || process.env.GLM_API_URL || 'https://api.glm.ai/v1',
-    model: process.env.QUICK_MODEL || process.env.MODEL_ID || 'quick',
+  chat: {
+    apiKey: process.env.CHAT_API_KEY || '',
+    apiUrl: process.env.CHAT_API_URL || 'https://api.openai.com/v1',
+    model: process.env.CHAT_MODEL || 'chat',
     embeddingModel: process.env.EMBEDDING_MODEL || 'embedding',
-    visionModel: process.env.VISION_MODEL || 'vision',
-    maxTokens: parseInt(process.env.QUICK_MAX_TOKENS || process.env.GLM_MAX_TOKENS || '4096'),
-    temperature: parseFloat(process.env.QUICK_TEMPERATURE || process.env.GLM_TEMPERATURE || '0.7'),
-    timeout: parseInt(process.env.QUICK_TIMEOUT || process.env.GLM_TIMEOUT || '30000'),
+    maxTokens: parseInt(process.env.CHAT_MAX_TOKENS || '4096'),
+    temperature: parseFloat(process.env.CHAT_TEMPERATURE || '0.7'),
+    timeout: parseInt(process.env.CHAT_TIMEOUT || '30000'),
+  },
+
+  omni: {
+    apiKey: process.env.OMNI_API_KEY || process.env.CHAT_API_KEY || '',
+    apiUrl: process.env.OMNI_API_URL || process.env.CHAT_API_URL || 'https://api.openai.com/v1',
+    model: process.env.OMNI_MODEL || 'omni',
+    maxTokens: parseInt(process.env.OMNI_MAX_TOKENS || '4096'),
+    timeout: parseInt(process.env.OMNI_TIMEOUT || '60000'),
   },
 
   plan: {
-    apiKey: process.env.PLAN_API_KEY || process.env.NEMOTRON_API_KEY || '',
-    apiUrl: process.env.PLAN_API_URL || process.env.NEMOTRON_API_URL || 'https://api.nvidia.com/v1',
-    model: process.env.PLAN_MODEL || process.env.NEMOTRON_MODEL || 'plan',
-    maxTokens: parseInt(process.env.PLAN_MAX_TOKENS || process.env.NEMOTRON_MAX_TOKENS || '8192'),
-    timeout: parseInt(process.env.PLAN_TIMEOUT || process.env.NEMOTRON_TIMEOUT || '60000'),
+    apiKey: process.env.PLAN_API_KEY || '',
+    apiUrl: process.env.PLAN_API_URL || 'https://api.openai.com/v1',
+    model: process.env.PLAN_MODEL || 'plan',
+    maxTokens: parseInt(process.env.PLAN_MAX_TOKENS || '8192'),
+    timeout: parseInt(process.env.PLAN_TIMEOUT || '60000'),
   },
 
   openclaw: {

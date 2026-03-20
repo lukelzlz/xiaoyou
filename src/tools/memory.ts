@@ -5,7 +5,7 @@
 
 import { createChildLogger } from '../utils/logger.js';
 import { VectorMemoryStore } from '../memory/vector.js';
-import { QuickService } from '../llm/quick.js';
+import { ChatService } from '../llm/quick.js';
 import type { ToolDefinition } from './index.js';
 import type { RetrievalStrategy } from '../types/index.js';
 
@@ -44,8 +44,8 @@ export class MemoryTool implements ToolDefinition<{ query: string; method?: 'sim
 
   private async getVectorStore(): Promise<VectorMemoryStore> {
     if (!this.vectorStore) {
-      const quick = new QuickService();
-      this.vectorStore = new VectorMemoryStore(quick);
+      const chat = new ChatService();
+      this.vectorStore = new VectorMemoryStore(chat);
       await this.vectorStore.init();
     }
     return this.vectorStore;
@@ -154,8 +154,8 @@ export class MemoryStoreTool implements ToolDefinition<{ content: string; type?:
 
   private async getVectorStore(): Promise<VectorMemoryStore> {
     if (!this.vectorStore) {
-      const quick = new QuickService();
-      this.vectorStore = new VectorMemoryStore(quick);
+      const chat = new ChatService();
+      this.vectorStore = new VectorMemoryStore(chat);
       await this.vectorStore.init();
     }
     return this.vectorStore;

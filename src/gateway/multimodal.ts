@@ -1,6 +1,7 @@
 import dns from 'node:dns';
 import type { Attachment, MultimodalContent } from '../types/index.js';
-import { QuickService, type VisionAnalysisResult } from '../llm/quick.js';
+import { OmniService, type AudioTranscriptionResult as OmniAudioResult } from '../llm/omni.js';
+import type { VisionAnalysisResult } from '../llm/chat.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('multimodal');
@@ -74,10 +75,10 @@ export interface MultimodalServices {
 }
 
 export class MultimodalExtractor {
-  private readonly quick?: QuickService;
+  private readonly omni?: OmniService;
 
-  constructor(private readonly services: MultimodalServices = {}, quick?: QuickService) {
-    this.quick = quick;
+  constructor(private readonly services: MultimodalServices = {}, omni?: OmniService) {
+    this.omni = omni;
   }
 
   /**
@@ -270,7 +271,7 @@ export class MultimodalExtractor {
         sourceName: attachment.name,
         mimeType: attachment.mimeType,
         size: attachment.size,
-        provider: this.services.recognizeImage ? 'external' : this.quick ? 'glm-vision' : 'mock',
+        provider: this.services.recognizeImage ? 'external' : this.omni ? 'omni' : 'mock',
       },
     };
   }
@@ -291,7 +292,7 @@ export class MultimodalExtractor {
         mimeType: attachment.mimeType,
         size: attachment.size,
         sourceName: attachment.name,
-        provider: this.services.parseDocument ? 'external' : this.quick ? 'glm-vision' : 'mock',
+        provider: this.services.parseDocument ? 'external' : this.omni ? 'omni' : 'mock',
       },
     };
   }
@@ -301,7 +302,9 @@ export class MultimodalExtractor {
 
     const transcription = this.services.transcribeAudio
       ? await this.services.transcribeAudio(attachment)
-      : await this.mockTranscription(attachment);
+      : this.omni
+        ? await this.transcribeWithOmni(attachment)
+        : await this.mockTranscription(attachment);
 
     return {
       type: 'audio',
@@ -312,7 +315,7 @@ export class MultimodalExtractor {
         mimeType: attachment.mimeType,
         size: attachment.size,
         sourceName: attachment.name,
-        provider: this.services.transcribeAudio ? 'external' : 'mock',
+        provider: this.services.transcribeAudio ? 'external' : this.omni ? 'omni' : 'mock',
         duration: null,
         ...transcription.metadata,
       },
@@ -336,7 +339,7 @@ export class MultimodalExtractor {
         mimeType: attachment.mimeType,
         size: attachment.size,
         sourceName: attachment.name,
-        provider: this.services.analyzeVideo ? 'external' : this.quick ? 'glm-vision' : 'mock',
+        provider: this.services.analyzeVideo ? 'external' : this.omni ? 'omni' : 'mock',
         duration: null,
         hasAudio: null,
         ...analysis.metadata,
@@ -345,11 +348,11 @@ export class MultimodalExtractor {
   }
 
   private async analyzeWithVisionModel(attachment: Attachment, instruction: string): Promise<OCRResult> {
-    if (!this.quick) {
+    if (!this.omni) {
       return this.mockOCR(attachment);
     }
 
-    const result = await this.quick.analyzeVision(
+    const result = await this.omni.analyzeVision(
       {
         url: attachment.url,
         type: attachment.type,
@@ -367,11 +370,11 @@ export class MultimodalExtractor {
   }
 
   private async parseDocumentWithVisionModel(attachment: Attachment): Promise<DocumentParseResult> {
-    if (!this.quick) {
+    if (!this.omni) {
       return this.mockDocumentParse(attachment);
     }
 
-    const result = await this.quick.analyzeVision(
+    const result = await this.omni.analyzeVision(
       {
         url: attachment.url,
         type: 'document',
@@ -391,11 +394,11 @@ export class MultimodalExtractor {
   }
 
   private async analyzeVideoWithVisionModel(attachment: Attachment): Promise<VideoAnalysisResult> {
-    if (!this.quick) {
+    if (!this.omni) {
       return this.mockVideoAnalysis(attachment);
     }
 
-    const result: VisionAnalysisResult = await this.quick.analyzeVision(
+    const result: VisionAnalysisResult = await this.omni.analyzeVision(
       {
         url: attachment.url,
         type: 'video',
@@ -410,6 +413,30 @@ export class MultimodalExtractor {
       labels: result.labels,
       confidence: result.confidence,
       metadata: result.metadata,
+    };
+  }
+
+  /**
+   * 使用 Omni 模型转录音频
+   */
+  private async transcribeWithOmni(attachment: Attachment): Promise<AudioTranscriptionResult> {
+    if (!this.omni) {
+      return this.mockTranscription(attachment);
+    }
+
+    const result = await this.omni.transcribeAudio({
+      url: attachment.url,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+    });
+
+    return {
+      text: result.text,
+      confidence: result.confidence,
+      metadata: {
+        language: result.language,
+        duration: result.duration,
+      },
     };
   }
 
