@@ -95,7 +95,8 @@ export class MultimodalExtractor {
 
     // 2. MIME 类型验证
     if (attachment.mimeType) {
-      const allowedTypes = SECURITY_CONFIG.ALLOWED_MIME_TYPES[attachment.type];
+      const mimeTypes = SECURITY_CONFIG.ALLOWED_MIME_TYPES as Record<string, readonly string[]>;
+      const allowedTypes = mimeTypes[attachment.type];
       if (allowedTypes && !allowedTypes.includes(attachment.mimeType)) {
         throw new AttachmentValidationError(
           `不支持的 MIME 类型: ${attachment.mimeType}`,
@@ -125,7 +126,7 @@ export class MultimodalExtractor {
     }
 
     // 协议检查
-    if (!SECURITY_CONFIG.ALLOWED_PROTOCOLS.includes(parsedUrl.protocol)) {
+    if (!SECURITY_CONFIG.ALLOWED_PROTOCOLS.includes(parsedUrl.protocol as 'http:' | 'https:')) {
       throw new AttachmentValidationError(
         `不允许的 URL 协议: ${parsedUrl.protocol}`,
         'INVALID_PROTOCOL'

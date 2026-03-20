@@ -60,6 +60,11 @@ const configSchema = z.object({
   database: z.object({
     url: z.string().url(),
   }),
+
+  brave: z.object({
+    apiKey: z.string().optional(),
+    apiUrl: z.string().url().default('https://api.search.brave.com/res/v1'),
+  }),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -120,5 +125,10 @@ export const config = configSchema.parse({
 
   database: {
     url: process.env.DATABASE_URL || 'postgresql://localhost:5432/xiaoyou',
+  },
+
+  brave: {
+    apiKey: process.env.BRAVE_API_KEY,
+    apiUrl: process.env.BRAVE_API_URL || 'https://api.search.brave.com/res/v1',
   },
 });

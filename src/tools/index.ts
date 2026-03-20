@@ -1,4 +1,5 @@
 import { createChildLogger } from '../utils/logger.js';
+import { createBraveSearchTool } from './brave-search.js';
 
 const log = createChildLogger('tools');
 
@@ -326,3 +327,4 @@ export async function invokeTool(
 registerTool(new SearchTool());
 registerTool(new ExtractTool());
 registerTool(new QueryTool());
+registerTool(createBraveSearchTool());
