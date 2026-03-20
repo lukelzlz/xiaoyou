@@ -67,7 +67,7 @@ export class BraveSearchTool implements ToolDefinition<{ query: string; count?: 
     log.debug({ query, limit }, '执行 Brave 搜索');
 
     if (!BRAVE_API_KEY) {
-      return this.fallbackSearch(query);
+      throw new Error('Brave Search API 未配置，请设置 BRAVE_API_KEY 环境变量');
     }
 
     try {
@@ -88,15 +88,14 @@ export class BraveSearchTool implements ToolDefinition<{ query: string; count?: 
 
       if (!response.ok) {
         const errorText = await response.text();
-        log.warn({ status: response.status, error: errorText }, 'Brave API 请求失败');
-        return this.fallbackSearch(query);
+        throw new Error(`Brave API 请求失败 (${response.status}): ${errorText}`);
       }
 
       const data = (await response.json()) as BraveSearchResponse;
       return this.formatResults(data, query);
     } catch (error) {
       log.error({ error, query }, 'Brave 搜索异常');
-      return this.fallbackSearch(query);
+      throw error;
     }
   }
 
@@ -143,23 +142,6 @@ export class BraveSearchTool implements ToolDefinition<{ query: string; count?: 
     return lines.join('\n');
   }
 
-  /**
-   * 无 API Key 时的回退处理
-   */
-  private fallbackSearch(query: string): string {
-    return [
-      `搜索: "${query}"`,
-      '',
-      '⚠️ Brave Search API 未配置 (请设置 BRAVE_API_KEY 环境变量)',
-      '',
-      '请配置以下环境变量以启用搜索功能：',
-      '```',
-      'BRAVE_API_KEY=your_api_key_here',
-      '```',
-      '',
-      '获取 API Key: https://brave.com/search/api/',
-    ].join('\n');
-  }
 }
 
 /**
