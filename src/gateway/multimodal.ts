@@ -352,10 +352,15 @@ export class MultimodalExtractor {
       return this.mockOCR(attachment);
     }
 
+    // 音频类型不应调用视觉模型
+    if (attachment.type === 'audio') {
+      return this.mockOCR(attachment);
+    }
+
     const result = await this.omni.analyzeVision(
       {
         url: attachment.url,
-        type: attachment.type,
+        type: attachment.type as 'image' | 'document' | 'video',
         name: attachment.name,
         mimeType: attachment.mimeType,
       },

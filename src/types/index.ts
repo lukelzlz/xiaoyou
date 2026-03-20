@@ -434,7 +434,7 @@ export type ControlAction = 'pause' | 'resume' | 'cancel' | 'retry';
 export interface RetrievalStrategy {
   method: 'similarity' | 'keyword' | 'hybrid';
   topK: number;
-  threshold: number;
+  threshold?: number;
   timeRange?: {
     start: Date;
     end: Date;
