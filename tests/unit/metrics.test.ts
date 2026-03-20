@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MetricsService } from '../../src/monitoring/metrics.js';
 
 describe('MetricsService', () => {
@@ -38,5 +38,55 @@ describe('MetricsService', () => {
 
     const snapshot = metrics.getSnapshot();
     expect(snapshot.application.activeUsers).toBe(0);
+  });
+
+  it('应返回系统监控指标', () => {
+    const metrics = new MetricsService();
+    const snapshot = metrics.getSnapshot();
+
+    expect(snapshot.system).toBeDefined();
+    expect(typeof snapshot.system.cpuUsage).toBe('number');
+    expect(typeof snapshot.system.memoryUsage).toBe('number');
+    expect(typeof snapshot.system.diskUsage).toBe('number');
+    expect(snapshot.system.cpuUsage).toBeGreaterThanOrEqual(0);
+    expect(snapshot.system.cpuUsage).toBeLessThanOrEqual(1);
+    expect(snapshot.system.memoryUsage).toBeGreaterThanOrEqual(0);
+    expect(snapshot.system.memoryUsage).toBeLessThanOrEqual(1);
+    expect(snapshot.system.diskUsage).toBeGreaterThanOrEqual(0);
+    expect(snapshot.system.diskUsage).toBeLessThanOrEqual(1);
+  });
+
+  describe('diskUsage', () => {
+    it('应正确返回磁盘使用率（范围 0-1）', () => {
+      const metrics = new MetricsService();
+      // 通过 spy 控制 sampleDiskUsage 的返回值
+      const spy = vi.spyOn(metrics as unknown as { sampleDiskUsage: () => number }, 'sampleDiskUsage')
+        .mockReturnValue(0.5);
+
+      const snapshot = metrics.getSnapshot();
+      expect(snapshot.system.diskUsage).toBe(0.5);
+
+      spy.mockRestore();
+    });
+
+    it('应在环境不支持时返回 0', () => {
+      const metrics = new MetricsService();
+      const spy = vi.spyOn(metrics as unknown as { sampleDiskUsage: () => number }, 'sampleDiskUsage')
+        .mockReturnValue(0);
+
+      const snapshot = metrics.getSnapshot();
+      expect(snapshot.system.diskUsage).toBe(0);
+
+      spy.mockRestore();
+    });
+
+    it('实际 sampleDiskUsage 应返回合理值', () => {
+      const metrics = new MetricsService();
+      // 直接调用真实方法，验证在当前环境下不会崩溃并返回合理值
+      const diskUsage = (metrics as unknown as { sampleDiskUsage: () => number }).sampleDiskUsage();
+      expect(typeof diskUsage).toBe('number');
+      expect(diskUsage).toBeGreaterThanOrEqual(0);
+      expect(diskUsage).toBeLessThanOrEqual(1);
+    });
   });
 });

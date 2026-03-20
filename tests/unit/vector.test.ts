@@ -57,9 +57,9 @@ vi.mock('@qdrant/js-client-rest', () => ({
   })),
 }));
 
-// 模拟 GLMService
-vi.mock('../../src/llm/glm.js', () => ({
-  GLMService: vi.fn().mockImplementation(() => ({
+// 模拟 ChatService
+vi.mock('../../src/llm/quick.js', () => ({
+  ChatService: vi.fn().mockImplementation(() => ({
     embed: vi.fn().mockResolvedValue(new Array(1536).fill(0.1)),
   })),
 }));
@@ -79,14 +79,14 @@ vi.mock('../../src/config/index.js', () => ({
 
 describe('VectorMemoryStore', () => {
   let store: VectorMemoryStore;
-  let mockGlm: { embed: ReturnType<typeof vi.fn> };
+  let mockChat: { embed: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.clearAllMocks();
     // 动态导入以应用模拟
-    const { GLMService } = await import('../../src/llm/glm.js');
-    mockGlm = new GLMService() as unknown as { embed: ReturnType<typeof vi.fn> };
-    store = new VectorMemoryStore(mockGlm as unknown as Parameters<typeof VectorMemoryStore>[0]);
+    const { ChatService } = await import('../../src/llm/quick.js');
+    mockChat = new ChatService() as unknown as { embed: ReturnType<typeof vi.fn> };
+    store = new VectorMemoryStore(mockChat as unknown as Parameters<typeof VectorMemoryStore>[0]);
   });
 
   it('应该能成功初始化集合', async () => {
@@ -109,7 +109,7 @@ describe('VectorMemoryStore', () => {
     };
 
     await expect(store.store(memory)).resolves.toBeUndefined();
-    expect(mockGlm.embed).toHaveBeenCalledWith('这是一条测试记忆');
+    expect(mockChat.embed).toHaveBeenCalledWith('这是一条测试记忆');
   });
 
   it('应该能使用相似度检索', async () => {
