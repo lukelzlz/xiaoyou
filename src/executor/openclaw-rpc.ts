@@ -2,8 +2,29 @@ import WebSocket from 'ws';
 import { createChildLogger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
+import { safeJsonParse } from '../utils/json.js';
 
 const log = createChildLogger('openclaw-rpc');
+
+// ============ 安全配置 ============
+const SECURITY_CONFIG = {
+  // 允许的 WebSocket 协议
+  ALLOWED_PROTOCOLS: ['ws:', 'wss:'],
+  // 私有 IP 地址正则 (SSRF 防护)
+  PRIVATE_IP_PATTERNS: [
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+    /^192\.168\./,
+    /^0\.0\.0\.0$/,
+    /^localhost$/i,
+    /^::1$/,
+    /^fc00:/i,
+    /^fe80:/i,
+  ],
+  // 最大消息大小 (1MB)
+  MAX_MESSAGE_SIZE: 1024 * 1024,
+};
 
 // 导出的类型
 export interface SessionInfo {
@@ -65,11 +86,52 @@ export class OpenClawRpcClient {
   private maxReconnectAttempts = 5;
   private monitorInterval: NodeJS.Timeout | null = null;
   private isConnected = false;
+  private validatedGatewayUrl: string;
 
   constructor(
-    private gatewayUrl: string = `ws://127.0.0.1:18789`,
+    gatewayUrl: string = `ws://127.0.0.1:18789`,
     private token?: string,
-  ) {}
+  ) {
+    // 验证并设置网关 URL
+    this.validatedGatewayUrl = this.validateGatewayUrl(gatewayUrl);
+  }
+
+  /**
+   * 验证 WebSocket URL 安全性
+   */
+  private validateGatewayUrl(url: string): string {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new XiaoyouError(ErrorCode.INTERNAL, `无效的 OpenClaw Gateway URL: ${url}`);
+    }
+
+    // 协议检查
+    if (!SECURITY_CONFIG.ALLOWED_PROTOCOLS.includes(parsedUrl.protocol as 'ws:' | 'wss:')) {
+      throw new XiaoyouError(
+        ErrorCode.INTERNAL,
+        `不允许的 WebSocket 协议: ${parsedUrl.protocol}`
+      );
+    }
+
+    // SSRF 防护：检查是否为私有 IP（本地开发环境除外）
+    const hostname = parsedUrl.hostname;
+    const isLocalDevelopment = config.env === 'development' || hostname === '127.0.0.1' || hostname === 'localhost';
+
+    if (!isLocalDevelopment) {
+      for (const pattern of SECURITY_CONFIG.PRIVATE_IP_PATTERNS) {
+        if (pattern.test(hostname)) {
+          throw new XiaoyouError(
+            ErrorCode.INTERNAL,
+            '禁止连接到私有网络地址的 OpenClaw Gateway'
+          );
+        }
+      }
+    }
+
+    return url;
+  }
 
   /**
    * 连接到 OpenClaw Gateway
@@ -80,14 +142,14 @@ export class OpenClawRpcClient {
     }
 
     return new Promise((resolve, reject) => {
-      log.info({ url: this.gatewayUrl }, '连接 OpenClaw Gateway');
+      log.info({ url: this.validatedGatewayUrl }, '连接 OpenClaw Gateway');
 
       const headers: Record<string, string> = {};
       if (this.token) {
         headers['Authorization'] = `Bearer ${this.token}`;
       }
 
-      this.ws = new WebSocket(this.gatewayUrl, { headers });
+      this.ws = new WebSocket(this.validatedGatewayUrl, { headers });
 
       this.ws.on('open', () => {
         log.info('OpenClaw Gateway 连接成功');
@@ -97,7 +159,13 @@ export class OpenClawRpcClient {
         resolve();
       });
 
-      this.ws.on('message', (data) => {
+      this.ws.on('message', (data, isBinary) => {
+        // 消息大小检查
+        const messageSize = isBinary ? (data as Buffer).length : data.toString().length;
+        if (messageSize > SECURITY_CONFIG.MAX_MESSAGE_SIZE) {
+          log.warn({ size: messageSize, maxSize: SECURITY_CONFIG.MAX_MESSAGE_SIZE }, '收到超大消息，忽略');
+          return;
+        }
         this.handleMessage(data.toString());
       });
 
@@ -377,26 +445,26 @@ export class OpenClawRpcClient {
    * 处理收到的消息
    */
   private handleMessage(data: string): void {
-    try {
-      const response: JsonRpcResponse = JSON.parse(data);
+    const response = safeJsonParse<JsonRpcResponse>(data);
+    if (!response) {
+      log.warn({ data: data.slice(0, 200) }, '解析消息失败');
+      return;
+    }
 
-      // 检查是否是请求的响应
-      const pending = this.pendingRequests.get(response.id);
-      if (pending) {
-        clearTimeout(pending.timeout);
-        this.pendingRequests.delete(response.id);
+    // 检查是否是请求的响应
+    const pending = this.pendingRequests.get(response.id);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      this.pendingRequests.delete(response.id);
 
-        if (response.error) {
-          pending.reject(new Error(response.error.message));
-        } else {
-          pending.resolve(response.result);
-        }
+      if (response.error) {
+        pending.reject(new Error(response.error.message));
       } else {
-        // 可能是事件通知
-        this.handleEvent(response);
+        pending.resolve(response.result);
       }
-    } catch (error) {
-      log.warn({ error, data }, '解析消息失败');
+    } else {
+      // 可能是事件通知
+      this.handleEvent(response);
     }
   }
 

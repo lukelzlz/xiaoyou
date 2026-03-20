@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
+import { safeJsonParse } from '../utils/json.js';
 import type { Intent, ParsedMessage } from '../types/index.js';
 import { IntentType } from '../types/index.js';
 import { OpenAICompatibleClient } from './base.js';
@@ -106,32 +107,32 @@ export class QuickService extends OpenAICompatibleClient {
 
     const result = await this.chat(prompt);
 
-    try {
-      const parsed = JSON.parse(result) as Partial<Intent> & { intent?: IntentType };
-      const type = parsed.type ?? parsed.intent;
-
-      if (!type || !Object.values(IntentType).includes(type)) {
-        log.warn({ result, type }, 'LLM 返回了无效的意图类型');
-        return {
-          type: IntentType.CHAT_CASUAL,
-          confidence: 0.3,
-          entities: [],
-        };
-      }
-
-      return {
-        type,
-        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.3,
-        entities: Array.isArray(parsed.entities) ? parsed.entities : [],
-      };
-    } catch (parseError) {
-      log.warn({ result, parseError }, '意图 JSON 解析失败');
+    const parsed = safeJsonParse<Partial<Intent> & { intent?: IntentType }>(result);
+    if (!parsed) {
+      log.warn({ result }, '意图 JSON 解析失败');
       return {
         type: IntentType.CHAT_CASUAL,
         confidence: 0.3,
         entities: [],
       };
     }
+
+    const type = parsed.type ?? parsed.intent;
+
+    if (!type || !Object.values(IntentType).includes(type)) {
+      log.warn({ result, type }, 'LLM 返回了无效的意图类型');
+      return {
+        type: IntentType.CHAT_CASUAL,
+        confidence: 0.3,
+        entities: [],
+      };
+    }
+
+    return {
+      type,
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.3,
+      entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+    };
   }
 }
 

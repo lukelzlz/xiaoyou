@@ -1,8 +1,46 @@
+import dns from 'node:dns';
 import type { Attachment, MultimodalContent } from '../types/index.js';
 import { QuickService, type VisionAnalysisResult } from '../llm/quick.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('multimodal');
+
+// ============ 安全配置 ============
+const SECURITY_CONFIG = {
+  // 文件大小限制 (10MB)
+  MAX_FILE_SIZE: 10 * 1024 * 1024,
+  // 允许的 MIME 类型白名单
+  ALLOWED_MIME_TYPES: {
+    image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+    document: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+    audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm'],
+    video: ['video/mp4', 'video/webm', 'video/ogg'],
+  },
+  // URL 协议白名单
+  ALLOWED_PROTOCOLS: ['http:', 'https:'],
+  // 私有 IP 地址正则 (SSRF 防护)
+  PRIVATE_IP_PATTERNS: [
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+    /^192\.168\./,
+    /^0\.0\.0\.0$/,
+    /^localhost$/i,
+    /^::1$/,
+    /^fc00:/i,
+    /^fe80:/i,
+  ],
+  // 最大 URL 长度
+  MAX_URL_LENGTH: 2048,
+} as const;
+
+// 附件验证错误
+export class AttachmentValidationError extends Error {
+  constructor(message: string, public readonly code: string) {
+    super(message);
+    this.name = 'AttachmentValidationError';
+  }
+}
 
 export interface OCRResult {
   text: string;
@@ -42,10 +80,107 @@ export class MultimodalExtractor {
     this.quick = quick;
   }
 
+  /**
+   * 验证附件安全性
+   * 防止 SSRF、文件过大、非法类型等攻击
+   */
+  private async validateAttachment(attachment: Attachment): Promise<void> {
+    // 1. 文件大小验证
+    if (attachment.size && attachment.size > SECURITY_CONFIG.MAX_FILE_SIZE) {
+      throw new AttachmentValidationError(
+        `文件大小超过限制 (${SECURITY_CONFIG.MAX_FILE_SIZE / 1024 / 1024}MB)`,
+        'FILE_TOO_LARGE'
+      );
+    }
+
+    // 2. MIME 类型验证
+    if (attachment.mimeType) {
+      const allowedTypes = SECURITY_CONFIG.ALLOWED_MIME_TYPES[attachment.type];
+      if (allowedTypes && !allowedTypes.includes(attachment.mimeType)) {
+        throw new AttachmentValidationError(
+          `不支持的 MIME 类型: ${attachment.mimeType}`,
+          'INVALID_MIME_TYPE'
+        );
+      }
+    }
+
+    // 3. URL 验证 (SSRF 防护)
+    await this.validateUrl(attachment.url);
+  }
+
+  /**
+   * 验证 URL 安全性 (SSRF 防护)
+   */
+  private async validateUrl(url: string): Promise<void> {
+    // URL 长度检查
+    if (url.length > SECURITY_CONFIG.MAX_URL_LENGTH) {
+      throw new AttachmentValidationError('URL 长度超过限制', 'URL_TOO_LONG');
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new AttachmentValidationError('无效的 URL 格式', 'INVALID_URL');
+    }
+
+    // 协议检查
+    if (!SECURITY_CONFIG.ALLOWED_PROTOCOLS.includes(parsedUrl.protocol)) {
+      throw new AttachmentValidationError(
+        `不允许的 URL 协议: ${parsedUrl.protocol}`,
+        'INVALID_PROTOCOL'
+      );
+    }
+
+    // 私有 IP 检查 (SSRF 防护)
+    const hostname = parsedUrl.hostname;
+    for (const pattern of SECURITY_CONFIG.PRIVATE_IP_PATTERNS) {
+      if (pattern.test(hostname)) {
+        throw new AttachmentValidationError(
+          '禁止访问私有网络地址',
+          'SSRF_BLOCKED'
+        );
+      }
+    }
+
+    // DNS 重绑定防护 - 解析域名并检查实际 IP
+    try {
+      // 使用 Node.js 的 DNS 解析（如果可用）
+      if (typeof dns !== 'undefined') {
+        const addresses = await new Promise<string[]>((resolve, reject) => {
+          dns.lookup(hostname, { all: true }, (err, addresses) => {
+            if (err) reject(err);
+            else resolve(addresses.map(a => a.address));
+          });
+        });
+
+        for (const ip of addresses) {
+          for (const pattern of SECURITY_CONFIG.PRIVATE_IP_PATTERNS) {
+            if (pattern.test(ip)) {
+              throw new AttachmentValidationError(
+                '域名解析到私有网络地址',
+                'DNS_REBINDING_BLOCKED'
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (error instanceof AttachmentValidationError) {
+        throw error;
+      }
+      // DNS 解析失败不阻止请求（让实际请求失败）
+      log.debug({ hostname, error }, 'DNS 解析跳过');
+    }
+  }
+
   async extract(attachments: Attachment[]): Promise<MultimodalContent[]> {
     const results = await Promise.all(
       attachments.map(async (attachment) => {
         try {
+          // 安全验证
+          await this.validateAttachment(attachment);
+
           switch (attachment.type) {
             case 'image':
               return await this.extractFromImage(attachment);
@@ -57,13 +192,22 @@ export class MultimodalExtractor {
               return await this.extractFromVideo(attachment);
           }
         } catch (error) {
-          log.warn({ error, attachment: attachment.name }, '多模态内容提取失败');
+          // 安全验证错误使用特定日志级别
+          if (error instanceof AttachmentValidationError) {
+            log.warn({
+              error: error.message,
+              code: error.code,
+              attachment: attachment.name
+            }, '附件安全验证失败');
+          } else {
+            log.warn({ error, attachment: attachment.name }, '多模态内容提取失败');
+          }
           return {
             type: attachment.type,
             url: attachment.url,
             metadata: {
               error: true,
-              message: String(error),
+              message: error instanceof AttachmentValidationError ? error.message : String(error),
               sourceName: attachment.name,
               mimeType: attachment.mimeType,
             },

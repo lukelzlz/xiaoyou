@@ -3,6 +3,7 @@ import { IntentType } from '../types/index.js';
 import { QuickService } from '../llm/quick.js';
 import { HotMemoryStore } from '../memory/hot.js';
 import { createChildLogger } from '../utils/logger.js';
+import { safeJsonParse } from '../utils/json.js';
 
 const log = createChildLogger('intent');
 
@@ -109,39 +110,16 @@ export class IntentRecognizer {
 
     const result = await this.quick.chat(prompt);
 
-    try {
-      const parsed = JSON.parse(result) as {
-        intent?: IntentType;
-        type?: IntentType;
-        confidence?: number;
-        entities?: Array<{ type: string; value: string; start: number; end: number; confidence?: number }>;
-        sentiment?: string;
-      };
+    const parsed = safeJsonParse<{
+      intent?: IntentType;
+      type?: IntentType;
+      confidence?: number;
+      entities?: Array<{ type: string; value: string; start: number; end: number; confidence?: number }>;
+      sentiment?: string;
+    }>(result);
 
-      const type = parsed.intent ?? parsed.type;
-
-      if (!type || !Object.values(IntentType).includes(type)) {
-        log.warn({ result, type }, 'LLM 返回了无效的意图类型，回退到闲聊');
-        return {
-          type: IntentType.CHAT_CASUAL,
-          confidence: 0.3,
-          entities: message.entities,
-          rawResponse: result,
-        };
-      }
-
-      // 合并解析器已提取的实体与 LLM 提取的实体
-      const llmEntities = Array.isArray(parsed.entities) ? parsed.entities : [];
-      const mergedEntities = this.mergeEntities(message.entities, llmEntities);
-
-      return {
-        type,
-        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
-        entities: mergedEntities,
-        rawResponse: result,
-      };
-    } catch (parseError) {
-      log.warn({ result, parseError }, '意图 JSON 解析失败，回退到闲聊');
+    if (!parsed) {
+      log.warn({ result }, '意图 JSON 解析失败，回退到闲聊');
       return {
         type: IntentType.CHAT_CASUAL,
         confidence: 0.3,
@@ -149,6 +127,29 @@ export class IntentRecognizer {
         rawResponse: result,
       };
     }
+
+    const type = parsed.intent ?? parsed.type;
+
+    if (!type || !Object.values(IntentType).includes(type)) {
+      log.warn({ result, type }, 'LLM 返回了无效的意图类型，回退到闲聊');
+      return {
+        type: IntentType.CHAT_CASUAL,
+        confidence: 0.3,
+        entities: message.entities,
+        rawResponse: result,
+      };
+    }
+
+    // 合并解析器已提取的实体与 LLM 提取的实体
+    const llmEntities = Array.isArray(parsed.entities) ? parsed.entities : [];
+    const mergedEntities = this.mergeEntities(message.entities, llmEntities);
+
+    return {
+      type,
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+      entities: mergedEntities,
+      rawResponse: result,
+    };
   }
 
   /**
@@ -158,13 +159,9 @@ export class IntentRecognizer {
   private analyzeSentiment(text: string, intentResult: EnhancedIntent): Sentiment {
     // 如果 LLM 返回了情绪标签，直接用
     if (intentResult.rawResponse) {
-      try {
-        const parsed = JSON.parse(intentResult.rawResponse) as { sentiment?: string };
-        if (parsed.sentiment) {
-          return this.mapSentiment(parsed.sentiment);
-        }
-      } catch {
-        // ignore
+      const parsed = safeJsonParse<{ sentiment?: string }>(intentResult.rawResponse);
+      if (parsed?.sentiment) {
+        return this.mapSentiment(parsed.sentiment);
       }
     }
 

@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { createChildLogger } from '../utils/logger.js';
 import { ErrorCode, XiaoyouError } from '../utils/error.js';
+import { safeJsonParseWithDetails } from '../utils/json.js';
 
 const log = createChildLogger('llm-client');
 
@@ -117,14 +118,16 @@ export abstract class OpenAICompatibleClient {
    * JSON 解析安全包装
    */
   protected parseJson<T>(raw: string, label: string): T {
-    try {
-      return JSON.parse(raw) as T;
-    } catch (parseError) {
-      log.error({ rawResponse: raw.slice(0, 500), parseError }, `${label} JSON 解析失败`);
-      throw new XiaoyouError(ErrorCode.PLAN_INVALID, `无法解析${label}`, {
+    const result = safeJsonParseWithDetails<T>(raw, { maxLength: 1024 * 1024 });
+
+    if (!result.success) {
+      log.error({ rawResponse: raw.slice(0, 500), error: result.error }, `${label} JSON 解析失败`);
+      throw new XiaoyouError(ErrorCode.PLAN_INVALID, `无法解析${label}: ${result.error}`, {
         details: { rawResponse: raw.slice(0, 500) },
       });
     }
+
+    return result.data;
   }
 
   protected async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {
