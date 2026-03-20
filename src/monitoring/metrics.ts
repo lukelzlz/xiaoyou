@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import { createChildLogger } from '../utils/logger.js';
 import type { MonitoringMetrics } from '../types/index.js';
 
@@ -45,7 +46,7 @@ export class MetricsService {
       system: {
         cpuUsage: this.sampleCpuUsage(),
         memoryUsage: this.sampleMemoryUsage(),
-        diskUsage: 0,
+        diskUsage: this.sampleDiskUsage(),
       },
       application: {
         requestCount: this.requestCount,
@@ -95,6 +96,30 @@ export class MetricsService {
     this.lastCpuSampleAt = currentAt;
 
     return Math.max(0, Math.min(ratio, 1));
+  }
+
+  private sampleDiskUsage(): number {
+    try {
+      // Linux/macOS: 使用 df 命令获取磁盘使用率
+      const output = execSync('df -k / 2>/dev/null | tail -1', {
+        encoding: 'utf-8',
+        timeout: 1000,
+      }).trim();
+
+      // 输出格式: Filesystem 1K-blocks Used Available Use% Mounted on
+      const parts = output.split(/\s+/);
+      const used = parseInt(parts[2], 10);
+      const total = parseInt(parts[1], 10);
+
+      if (total === 0 || isNaN(used) || isNaN(total)) {
+        return 0;
+      }
+
+      return used / total;
+    } catch {
+      // Windows 或其他环境：降级处理
+      return 0;
+    }
   }
 }
 

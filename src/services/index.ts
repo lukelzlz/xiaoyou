@@ -124,16 +124,18 @@ export class ToolService implements SceneHandler {
     try {
       switch (intent.type) {
         case IntentType.TOOL_SEARCH:
-          return await invokeTool('search', { query: message.textContent });
-        
+          return await invokeTool('brave_search', { query: message.textContent });
+
         case IntentType.TOOL_EXTRACT:
           return await invokeTool('extract', { content: message.textContent });
-          
+
         case IntentType.TOOL_QUERY:
           return await invokeTool('query', { query: message.textContent });
-          
-        default:
-          return '暂不支持该工具请求。';
+
+        default: {
+          const supportedTools = ['brave_search', 'extract', 'query', 'memory_search', 'memory_store'];
+          return `暂不支持该工具请求。\n\n支持的工具：\n${supportedTools.map((t) => `- ${t}`).join('\n')}`;
+        }
       }
     } catch (error) {
       log.error({ error, intent: intent.type }, '工具调用失败');

@@ -414,6 +414,7 @@ export class MultimodalExtractor {
   }
 
   private async mockOCR(attachment: Attachment): Promise<OCRResult> {
+    log.warn({ attachment: attachment.name }, '使用 Mock OCR（未配置视觉模型）');
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     return {
@@ -424,6 +425,7 @@ export class MultimodalExtractor {
   }
 
   private async mockDocumentParse(attachment: Attachment): Promise<DocumentParseResult> {
+    log.warn({ attachment: attachment.name }, '使用 Mock 文档解析（未配置视觉模型）');
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     return {
@@ -437,6 +439,7 @@ export class MultimodalExtractor {
   }
 
   private async mockTranscription(attachment: Attachment): Promise<AudioTranscriptionResult> {
+    log.warn({ attachment: attachment.name }, '使用 Mock 音频转录（未配置转录服务）');
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     return {
@@ -449,6 +452,7 @@ export class MultimodalExtractor {
   }
 
   private async mockVideoAnalysis(attachment: Attachment): Promise<VideoAnalysisResult> {
+    log.warn({ attachment: attachment.name }, '使用 Mock 视频分析（未配置视觉模型）');
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     return {

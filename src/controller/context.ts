@@ -22,7 +22,8 @@ const defaultConfig: ContextManagerConfig = {
  *  3. 追踪最近活跃时间
  *  4. 定期清理过期上下文
  *
- * 后续可替换为 Redis / 数据库存储实现。
+ * 注意：此实现使用进程内存存储，重启后数据会丢失。
+ * 生产环境建议使用 Redis 实现以支持分布式部署。
  */
 export class InMemoryContextManager implements ContextManager {
   private contexts = new Map<string, SessionContext>();
@@ -32,6 +33,7 @@ export class InMemoryContextManager implements ContextManager {
   constructor(config?: Partial<ContextManagerConfig>) {
     this.config = { ...defaultConfig, ...config };
     this.cleanupTimer = setInterval(() => this.cleanup(), this.config.cleanupIntervalMs);
+    log.warn('使用内存版上下文管理器，重启后数据将丢失。生产环境建议配置 Redis。');
   }
 
   async get(sessionId: string): Promise<SessionContext | null> {
