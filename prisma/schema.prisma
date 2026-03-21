@@ -1,0 +1,329 @@
+// Prisma Schema for Xiaoyou
+// 数据库持久化层
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 用户相关 ============
+
+/// 用户表
+model User {
+  id            String   @id @default(cuid())
+  discordId     String?  @unique
+  telegramId    String?  @unique
+  username      String?
+  displayName   String?
+  avatarUrl     String?
+  
+  // 用户偏好
+  language      String   @default("zh-CN")
+  responseStyle String   @default("casual")
+  timezone      String   @default("Asia/Shanghai")
+  notificationEnabled Boolean @default(true)
+  quietHoursStart String?
+  quietHoursEnd   String?
+  
+  // 元数据
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastActiveAt  DateTime @default(now())
+  
+  // 关联
+  tasks         Task[]
+  schedules     Schedule[]
+  feedbacks     Feedback[]
+  sessions      Session[]
+  profile       UserProfile?
+  
+  @@index([discordId])
+  @@index([telegramId])
+  @@map("users")
+}
+
+/// 用户画像
+model UserProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 画像数据 (JSON)
+  interests       Json?    // 兴趣标签
+  expertise       Json?    // 专业领域
+  communicationStyle Json? // 沟通风格
+  preferences     Json?    // 其他偏好
+  
+  // 统计
+  totalMessages   Int      @default(0)
+  totalTasks      Int      @default(0)
+  taskSuccessRate Float    @default(0)
+  feedbackScore   Float    @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("user_profiles")
+}
+
+/// 会话
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  channelId   String
+  platform    String   // discord, telegram
+  
+  // 上下文变量 (JSON)
+  variables   Json?
+  
+  // 活动任务
+  activeTaskId String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  expiresAt   DateTime?
+  
+  @@index([userId])
+  @@index([channelId])
+  @@map("sessions")
+}
+
+// ============ 任务相关 ============
+
+/// 任务
+model Task {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 任务信息
+  description String
+  type        String   // code, automation, analysis
+  status      String   @default("pending") // pending, planning, running, waiting_user, completed, failed, cancelled
+  priority    String   @default("normal")  // low, normal, high
+  
+  // 执行计划 (JSON)
+  plan        Json?
+  
+  // 进度
+  totalSteps     Int      @default(0)
+  completedSteps Int      @default(0)
+  currentStep    String?
+  
+  // 结果
+  result      Json?
+  error       String?
+  
+  // 时间
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  
+  // 关联
+  steps       TaskStep[]
+  feedbacks   Feedback[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@map("tasks")
+}
+
+/// 任务步骤
+model TaskStep {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  // 步骤信息
+  stepId      String
+  action      String
+  description String?
+  
+  // 参数
+  params      Json?
+  
+  // 状态
+  status      String   @default("pending") // pending, running, success, failed, skipped
+  output      Json?
+  error       String?
+  
+  // 时间
+  startedAt   DateTime?
+  completedAt DateTime?
+  duration    Int?     // 毫秒
+  
+  @@index([taskId])
+  @@map("task_steps")
+}
+
+// ============ 定时任务相关 ============
+
+/// 定时任务
+model Schedule {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 任务信息
+  name            String
+  description     String?
+  
+  // CRON 配置
+  cronExpression  String
+  timezone        String   @default("Asia/Shanghai")
+  
+  // 状态
+  status          String   @default("active") // active, paused, expired, cancelled
+  
+  // 执行配置
+  startTime       DateTime?
+  endTime         DateTime?
+  maxExecutions   Int?
+  executionCount  Int      @default(0)
+  
+  // 通知配置
+  notifyOnComplete Boolean @default(true)
+  notifyOnFailure  Boolean @default(true)
+  
+  // 任务模板 (JSON)
+  taskTemplate    Json?
+  
+  // 时间
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastExecution   DateTime?
+  nextExecution   DateTime?
+  
+  // 关联
+  history         ScheduleHistory[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([nextExecution])
+  @@map("schedules")
+}
+
+/// 定时任务执行历史
+model ScheduleHistory {
+  id            String   @id @default(cuid())
+  scheduleId    String
+  schedule      Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  
+  // 执行信息
+  status        String   // success, failed, skipped
+  result        Json?
+  error         String?
+  
+  // 时间
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  duration      Int?     // 毫秒
+  
+  @@index([scheduleId])
+  @@map("schedule_history")
+}
+
+// ============ 反馈相关 ============
+
+/// 用户反馈
+model Feedback {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联消息/任务
+  messageId       String?
+  taskId          String?
+  task            Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  
+  // 反馈内容
+  type            String   // positive, negative, correction
+  content         String?
+  correctedResponse String?
+  originalResponse  String?
+  
+  // 分析结果 (JSON)
+  analysis        Json?
+  
+  // 处理状态
+  processed       Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([type])
+  @@map("feedbacks")
+}
+
+// ============ 系统相关 ============
+
+/// 审计日志
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  
+  // 操作信息
+  action      String
+  resource    String
+  result      String   // success, failure
+  
+  // 请求信息
+  ipAddress   String?
+  userAgent   String?
+  
+  // 元数据 (JSON)
+  metadata    Json?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// 系统配置
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("system_configs")
+}
+
+/// Webhook 事件
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  type        String   // task.completed, task.failed, cron.triggered, etc.
+  source      String   // openclaw, discord, telegram, etc.
+  
+  // 事件数据 (JSON)
+  data        Json
+  
+  // 处理状态
+  processed   Boolean  @default(false)
+  processedAt DateTime?
+  error       String?
+  
+  // 重试
+  retryCount  Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([type])
+  @@index([processed])
+  @@index([createdAt])
+  @@map("webhook_events")
+}

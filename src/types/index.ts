@@ -174,6 +174,8 @@ export interface VectorMemory {
   metadata: VectorMetadata;
   createdAt: Date;
   expiresAt?: Date;
+  /** 相似度分数 (0-1)，仅在检索结果中存在 */
+  score?: number;
 }
 
 // 向量元数据

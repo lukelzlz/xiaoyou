@@ -366,7 +366,32 @@ function parseNaturalLanguageToCron(input: string): CronRule {
 
 ### 3.3 OpenClaw Agent 执行引擎
 
-#### 3.3.1 执行状态机
+基于 [OpenClaw](https://docs.openclaw.ai/zh-CN) 的任务执行引擎，通过 WebSocket RPC 与 OpenClaw Gateway 通信。
+
+#### 3.3.1 架构设计
+
+```mermaid
+flowchart LR
+    subgraph 小悠系统
+        A[OpenClawAgent]
+        B[OpenClawCron]
+        C[OpenClawRpcClient]
+    end
+    
+    subgraph OpenClaw Gateway
+        D[WebSocket Server]
+        E[Task Executor]
+        F[Cron Scheduler]
+    end
+    
+    A --> C
+    B --> C
+    C -->|WebSocket RPC| D
+    D --> E
+    D --> F
+```
+
+#### 3.3.2 执行状态机
 
 ```mermaid
 stateDiagram-v2
@@ -385,42 +410,56 @@ stateDiagram-v2
     Cancelled --> [*]
 ```
 
-#### 3.3.2 执行器接口
+#### 3.3.3 执行器接口
 
 ```typescript
-interface Executor {
-  // 执行单步任务
-  execute(step: ExecutionStep): Promise<StepResult>;
+// src/executor/openclaw-agent.ts
+interface SessionInfo {
+  sessionId: string;
+  userId: string;
+  channelId: string;
+  platform: string;
+}
+
+class OpenClawAgent {
+  // 执行任务计划
+  async executeTask(plan: ExecutionPlan, session?: SessionInfo): Promise<PlanResult | string>;
   // 执行完整计划
-  executePlan(plan: ExecutionPlan): Promise<PlanResult>;
-  // 暂停执行
-  pause(planId: string): Promise<void>;
-  // 恢复执行
-  resume(planId: string): Promise<void>;
-  // 取消执行
-  cancel(planId: string): Promise<void>;
-  // 获取状态
-  getStatus(planId: string): Promise<ExecutionStatus>;
-}
-
-interface StepResult {
-  stepId: string;
-  status: 'success' | 'failed' | 'skipped';
-  output?: any;
-  error?: Error;
-  duration: number;
-}
-
-interface PlanResult {
-  planId: string;
-  status: 'success' | 'partial' | 'failed' | 'cancelled';
-  stepResults: StepResult[];
-  totalDuration: number;
-  artifacts?: Artifact[];
+  async executePlan(plan: ExecutionPlan, session?: SessionInfo): Promise<PlanResult>;
+  // 获取任务状态
+  async getTaskStatus(taskId: string): Promise<TaskStatus>;
+  // 推送通知给用户
+  async pushNotification(userId: string, message: string): Promise<void>;
+  // 暂停任务
+  async pause(planId: string): Promise<void>;
+  // 恢复任务
+  async resume(planId: string): Promise<void>;
+  // 取消任务
+  async cancel(planId: string): Promise<void>;
 }
 ```
 
-#### 3.3.3 重试策略
+#### 3.3.4 WebSocket RPC 客户端
+
+```typescript
+// src/executor/openclaw-rpc.ts
+class OpenClawRpcClient {
+  // 连接到 OpenClaw Gateway (默认 ws://127.0.0.1:18789)
+  async connect(): Promise<void>;
+  // 发送 JSON-RPC 2.0 调用
+  async call<T>(method: string, params?: unknown, timeoutMs?: number): Promise<T>;
+  // 执行任务计划
+  async executePlan(planId: string, steps: Step[], options?: TaskOptions): Promise<{ taskId: string }>;
+  // 创建定时任务
+  async createCronTask(expression: string, task: TaskTemplate, options?: CronOptions): Promise<{ taskId: string }>;
+  // 发送通知
+  async sendNotification(session: SessionInfo, message: string): Promise<void>;
+  // 控制任务
+  async controlTask(taskId: string, action: 'pause' | 'resume' | 'cancel'): Promise<void>;
+}
+```
+
+#### 3.3.5 重试策略
 
 ```typescript
 interface RetryPolicy {

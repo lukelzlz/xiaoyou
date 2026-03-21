@@ -58,13 +58,14 @@
 
 ### 1.6 OpenClaw 配置
 
+OpenClaw 通过 WebSocket RPC 与 Gateway 通信，默认监听在 `ws://127.0.0.1:18789`。
+
 | 变量名 | 必填 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `OPENCLAW_API_URL` | 是 | - | OpenClaw API 地址 |
-| `OPENCLAW_API_KEY` | 是 | - | OpenClaw API 密钥 |
+| `OPENCLAW_API_URL` | 否 | `http://localhost:8080` | OpenClaw Gateway WebSocket URL |
+| `OPENCLAW_API_KEY` | 否 | - | OpenClaw API 密钥（用于认证） |
 | `OPENCLAW_MAX_CONCURRENT` | 否 | `10` | 最大并发任务数 |
 | `OPENCLAW_TASK_TIMEOUT` | 否 | `300000` | 任务超时（毫秒，默认5分钟） |
-| `OPENCLAW_CALLBACK_URL` | 否 | `http://localhost:3000/api/callback` | 任务回调地址 |
 
 ### 1.7 Redis 配置
 

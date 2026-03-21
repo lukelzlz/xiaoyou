@@ -36,83 +36,87 @@ xiaoyou/
 ├── src/
 │   ├── adapters/           # 平台适配器
 │   │   ├── discord/
-│   │   │   ├── index.ts
-│   │   │   ├── handlers.ts
-│   │   │   └── types.ts
+│   │   │   ├── index.ts    # Discord 机器人实现
+│   │   │   └── types.ts    # Discord 类型定义
 │   │   └── telegram/
-│   │       ├── index.ts
-│   │       ├── handlers.ts
-│   │       └── types.ts
+│   │       ├── index.ts    # Telegram 机器人实现
+│   │       └── types.ts    # Telegram 类型定义
 │   │
 │   ├── gateway/            # 网关层
+│   │   ├── index.ts        # 网关服务入口
 │   │   ├── parser.ts       # 消息解析
-│   │   ├── multimodal.ts   # 多模态提取
+│   │   ├── multimodal.ts   # 多模态提取（视觉大语言模型）
 │   │   └── ratelimit.ts    # 速率限制
 │   │
 │   ├── controller/         # 控制层
+│   │   ├── index.ts        # 控制器服务
 │   │   ├── intent.ts       # 意图识别
 │   │   ├── router.ts       # 场景路由
 │   │   └── context.ts      # 上下文管理
 │   │
 │   ├── services/           # 服务层
-│   │   ├── chat/           # 聊天服务
-│   │   ├── tool/           # 工具服务
-│   │   ├── task/           # 任务服务
-│   │   └── schedule/       # 定时服务
+│   │   └── index.ts        # 聊天/工具/任务/定时服务
 │   │
-│   ├── executor/           # 执行层
-│   │   ├── planner.ts      # 规划引擎
-│   │   ├── executor.ts     # 执行引擎
-│   │   └── scheduler.ts    # 调度引擎
+│   ├── executor/           # 执行层（OpenClaw 集成）
+│   │   ├── openclaw-agent.ts  # OpenClaw Agent 执行引擎
+│   │   ├── openclaw-cron.ts   # OpenClaw CRON 定时调度
+│   │   └── openclaw-rpc.ts    # OpenClaw WebSocket RPC 客户端
 │   │
 │   ├── memory/             # 记忆系统
-│   │   ├── hot.ts          # 热记忆
-│   │   ├── vector.ts       # 向量记忆
+│   │   ├── hot.ts          # 热记忆（Redis）
+│   │   ├── vector.ts       # 向量记忆（Qdrant）
 │   │   └── flush.ts        # 记忆归档
 │   │
 │   ├── llm/                # LLM 集成
-│   │   ├── glm.ts          # GLM-4.5-Air
-│   │   ├── nemotron.ts     # Nemotron
-│   │   └── prompts/        # Prompt 模板
+│   │   ├── base.ts         # LLM 基类
+│   │   ├── quick.ts        # 快速响应模型（聊天/意图识别）
+│   │   ├── plan.ts         # 规划模型（任务分解/CRON生成）
+│   │   └── omni.ts         # 全能模型（复杂任务）
 │   │
 │   ├── tools/              # 工具集
-│   │   ├── search.ts
-│   │   ├── extract.ts
-│   │   └── query.ts
+│   │   ├── index.ts        # 工具注册与调用
+│   │   ├── brave-search.ts # Brave 搜索工具
+│   │   └── memory.ts       # 记忆工具
 │   │
-│   ├── openclaw/           # OpenClaw 集成
-│   │   ├── agent.ts
-│   │   └── cron.ts
+│   ├── plugins/            # 插件系统
+│   │   └── index.ts        # 插件管理器
+│   │
+│   ├── monitoring/         # 监控
+│   │   └── metrics.ts      # Prometheus 指标
 │   │
 │   ├── utils/              # 工具函数
-│   │   ├── logger.ts
-│   │   ├── error.ts
-│   │   └── helpers.ts
+│   │   ├── logger.ts       # 日志
+│   │   ├── error.ts        # 错误处理
+│   │   ├── json.ts         # JSON 安全解析
+│   │   └── helpers.ts      # 辅助函数
 │   │
 │   ├── config/             # 配置
-│   │   ├── index.ts
-│   │   └── env.ts
+│   │   ├── index.ts        # 配置加载
+│   │   └── env.ts          # 环境变量
 │   │
+│   ├── types/              # 类型定义
+│   │   └── index.ts        # 全局类型
+│   │
+│   ├── health.ts           # 健康检查与 Webhook
 │   └── index.ts            # 入口文件
 │
-├── prisma/                 # 数据库 Schema
-│   └── schema.prisma
-│
 ├── docs/                   # 文档
-│   ├── design.md
-│   ├── implementation.md
-│   ├── api.md
-│   └── configuration.md
+│   ├── design.md           # 详细设计文档
+│   ├── implementation.md   # 实现指南
+│   ├── api.md              # API 接口文档
+│   └── configuration.md    # 配置说明
 │
 ├── tests/                  # 测试
-│   ├── unit/
-│   └── integration/
+│   └── unit/               # 单元测试
 │
-├── scripts/                # 脚本
-│   └── seed.ts
+├── plans/                  # 计划文档
+│   └── *.md
 │
 ├── package.json
 ├── tsconfig.json
+├── vitest.config.ts
+├── docker-compose.yml
+├── Dockerfile
 ├── .env.example
 └── README.md
 ```
@@ -324,87 +328,132 @@ export class TelegramAdapter implements PlatformAdapter {
 
 ### 3.4 OpenClaw Agent 集成（执行引擎）
 
-基于 [OpenClaw](https://docs.openclaw.ai/zh-CN) 的任务执行引擎实现。
+基于 [OpenClaw](https://docs.openclaw.ai/zh-CN) 的任务执行引擎实现。通过 WebSocket RPC 与 OpenClaw Gateway 通信，支持多 session 隔离和任务监控。
 
 ```typescript
 // src/executor/openclaw-agent.ts
-import { OpenClawClient } from 'openclaw-sdk';
+import { getOpenClawRpcClient, type SessionInfo, type TaskOptions } from './openclaw-rpc.js';
+import type { ExecutionPlan, PlanResult, CronRule, ScheduleTask } from '../types/index.js';
 
 export class OpenClawAgent {
-  private client: OpenClawClient;
+  private rpc = getOpenClawRpcClient();
 
-  constructor(config: OpenClawConfig) {
-    this.client = new OpenClawClient({
-      apiUrl: config.apiUrl,
-      apiKey: config.apiKey,
-    });
+  /**
+   * 执行任务计划
+   */
+  async executeTask(plan: ExecutionPlan, session?: SessionInfo): Promise<PlanResult | string> {
+    // 确保 RPC 连接
+    await this.rpc.connect();
+
+    // 构建步骤
+    const steps = plan.steps.map(step => ({
+      action: step.action,
+      params: step.params,
+    }));
+
+    // 创建任务
+    const { taskId } = await this.rpc.executePlan(plan.planId, steps, { session });
+
+    // 等待完成
+    return this.waitForCompletion(taskId, plan, session);
   }
 
-  // 执行任务
-  async executeTask(plan: ExecutionPlan): Promise<TaskResult> {
-    const task = await this.client.createTask({
-      type: 'multi_step',
-      steps: plan.steps.map(step => ({
-        action: step.action,
-        params: step.params,
-        timeout: step.timeout,
-      })),
-      dependencies: plan.dependencies,
-    });
-
-    // 等待任务完成
-    return await this.waitForCompletion(task.id);
-  }
-
-  // 创建定时任务
-  async createCronTask(schedule: ScheduleConfig): Promise<CronTask> {
-    return await this.client.createCron({
-      expression: schedule.cronExpression,
-      task: schedule.taskTemplate,
-      timezone: schedule.timezone,
-    });
-  }
-
-  // 更新定时任务
-  async updateCronTask(taskId: string, updates: Partial<ScheduleConfig>): Promise<void> {
-    await this.client.updateCron(taskId, updates);
-  }
-
-  // 删除定时任务
-  async deleteCronTask(taskId: string): Promise<void> {
-    await this.client.deleteCron(taskId);
-  }
-
-  // 获取任务状态
-  async getTaskStatus(taskId: string): Promise<TaskStatus> {
-    return await this.client.getTask(taskId);
-  }
-
-  // 主动推送消息
-  async pushNotification(userId: string, message: string): Promise<void> {
-    await this.client.sendNotification({
-      userId,
-      message,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  private async waitForCompletion(taskId: string): Promise<TaskResult> {
-    return new Promise((resolve, reject) => {
-      const poll = async () => {
-        const status = await this.getTaskStatus(taskId);
-        
-        if (status.state === 'completed') {
-          resolve(status.result);
-        } else if (status.state === 'failed') {
-          reject(new Error(status.error));
-        } else {
-          setTimeout(poll, 1000);
-        }
+  /**
+   * 执行完整计划
+   */
+  async executePlan(plan: ExecutionPlan, session?: SessionInfo): Promise<PlanResult> {
+    const result = await this.executeTask(plan, session);
+    if (typeof result === 'string') {
+      return {
+        planId: plan.planId,
+        status: 'success',
+        stepResults: [],
+        totalDuration: 0,
+        artifacts: [{ type: 'text', name: 'result', content: result }],
       };
-      
-      poll();
-    });
+    }
+    return result;
+  }
+
+  /**
+   * 创建定时任务
+   */
+  async createCronTask(
+    input: { cronExpression: string; timezone: string; taskTemplate: Record<string, unknown> },
+    session?: SessionInfo,
+  ): Promise<{ id: string }> {
+    await this.rpc.connect();
+    const result = await this.rpc.createCronTask(
+      input.cronExpression,
+      input.taskTemplate as { type: string; params: Record<string, unknown> },
+      { timezone: input.timezone, session },
+    );
+    return { id: result.taskId };
+  }
+
+  /**
+   * 获取任务状态
+   */
+  async getTaskStatus(taskId: string): Promise<{
+    id: string;
+    status?: string;
+    result?: unknown;
+    error?: string;
+    currentStep?: string;
+    completedSteps?: string[];
+    failedSteps?: string[];
+    waitingForUser?: boolean;
+  }> {
+    await this.rpc.connect();
+    const status = await this.rpc.getTaskStatus(taskId);
+    return {
+      id: taskId,
+      status: status.status,
+      result: status.result,
+      error: status.error,
+      currentStep: status.currentStep,
+      completedSteps: status.completedSteps,
+      failedSteps: status.failedSteps,
+      waitingForUser: status.waitingForUser,
+    };
+  }
+
+  /**
+   * 推送通知给用户
+   */
+  async pushNotification(userId: string, message: string): Promise<void> {
+    await this.rpc.connect();
+    const session: SessionInfo = {
+      sessionId: `notify:${userId}`,
+      userId,
+      channelId: userId,
+      platform: 'discord',
+    };
+    await this.rpc.sendNotification(session, message);
+  }
+
+  /**
+   * 暂停任务
+   */
+  async pause(planId: string): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'pause');
+  }
+
+  /**
+   * 恢复任务
+   */
+  async resume(planId: string): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'resume');
+  }
+
+  /**
+   * 取消任务
+   */
+  async cancel(planId: string): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.controlTask(planId, 'cancel');
   }
 }
 ```
@@ -413,56 +462,230 @@ export class OpenClawAgent {
 
 ```typescript
 // src/executor/openclaw-cron.ts
-import { OpenClawClient } from 'openclaw-sdk';
+import { getOpenClawRpcClient, type SessionInfo } from './openclaw-rpc.js';
+import type { CronRule, ExecutionPlan, ScheduleTask } from '../types/index.js';
+
+interface TaskTemplate {
+  type: string;
+  params: Record<string, unknown>;
+  callback?: string;
+  plan?: ExecutionPlan;
+}
+
+interface CreateCronOptions {
+  name?: string;
+  description?: string;
+  notifyOnComplete?: boolean;
+  notifyOnFailure?: boolean;
+}
 
 export class OpenClawCron {
-  private client: OpenClawClient;
+  private rpc = getOpenClawRpcClient();
 
-  constructor(config: OpenClawConfig) {
-    this.client = new OpenClawClient(config);
+  /**
+   * 注册定时任务
+   */
+  async register(
+    rule: CronRule,
+    task: TaskTemplate,
+    options?: CreateCronOptions,
+    session?: SessionInfo,
+  ): Promise<string> {
+    await this.rpc.connect();
+    const result = await this.rpc.createCronTask(
+      rule.expression,
+      { type: task.type, params: task.params },
+      { timezone: rule.timezone, session, callback: task.callback },
+    );
+    return result.taskId;
   }
 
-  // 注册定时任务
-  async register(rule: CronRule, task: TaskTemplate): Promise<string> {
-    const cronTask = await this.client.createCron({
-      expression: rule.expression,
-      timezone: rule.timezone,
-      task: {
-        type: task.type,
-        params: task.params,
-        callback: task.callback,
-      },
-      startTime: rule.startTime,
-      endTime: rule.endTime,
-      maxExecutions: rule.maxExecutions,
+  /**
+   * 更新定时任务
+   */
+  async update(
+    taskId: string,
+    updates: Partial<CronRule> & { task?: Partial<TaskTemplate> },
+  ): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.updateCronTask(taskId, {
+      expression: updates.expression,
+      enabled: true,
     });
-
-    return cronTask.id;
   }
 
-  // 更新定时任务
-  async update(taskId: string, rule: Partial<CronRule>): Promise<void> {
-    await this.client.updateCron(taskId, {
-      expression: rule.expression,
-      timezone: rule.timezone,
-    });
-  }
-
-  // 取消定时任务
+  /**
+   * 取消定时任务
+   */
   async cancel(taskId: string): Promise<void> {
-    await this.client.deleteCron(taskId);
+    await this.rpc.connect();
+    await this.rpc.deleteCronTask(taskId);
   }
 
-  // 获取下次执行时间
+  /**
+   * 暂停定时任务
+   */
+  async pause(taskId: string): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.updateCronTask(taskId, { enabled: false });
+  }
+
+  /**
+   * 恢复定时任务
+   */
+  async resume(taskId: string): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.updateCronTask(taskId, { enabled: true });
+  }
+
+  /**
+   * 获取下次执行时间
+   */
   async getNextExecution(taskId: string): Promise<Date> {
-    const task = await this.client.getCron(taskId);
-    return new Date(task.nextExecution);
+    const task = await this.getTaskDetail(taskId);
+    return new Date(task.nextExecution ?? Date.now());
   }
 
-  // 获取所有定时任务
-  async listTasks(userId: string): Promise<CronTask[]> {
-    return await this.client.listCrons({ userId });
+  /**
+   * 获取用户的所有定时任务
+   */
+  async listTasks(userId: string): Promise<ScheduleTask[]> {
+    await this.rpc.connect();
+    const tasks = await this.rpc.listCronTasks(userId);
+    return tasks.map(t => this.toScheduleTask(t));
   }
+
+  /**
+   * 获取任务执行历史
+   */
+  async getExecutionHistory(
+    taskId: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<Array<{
+    executionId: string;
+    executedAt: Date;
+    status: 'success' | 'failed';
+    duration: number;
+    error?: string;
+  }>> {
+    await this.rpc.connect();
+    const history = await this.rpc.call<Array<{
+      executionId: string;
+      executedAt: string;
+      status: 'success' | 'failed';
+      duration: number;
+      error?: string;
+    }>>('cron.history', { taskId, limit: options?.limit, offset: options?.offset });
+    return history.map(item => ({ ...item, executedAt: new Date(item.executedAt) }));
+  }
+
+  /**
+   * 发送系统通知
+   */
+  async sendNotification(
+    session: SessionInfo,
+    title: string,
+    message: string,
+    level: 'info' | 'warn' | 'error' = 'info',
+  ): Promise<void> {
+    await this.rpc.connect();
+    await this.rpc.sendNotification(session, `${title}\n\n${message}`);
+  }
+}
+```
+
+### 3.6 OpenClaw RPC 客户端
+
+通过 WebSocket 与 OpenClaw Gateway 通信的 JSON-RPC 2.0 客户端。
+
+```typescript
+// src/executor/openclaw-rpc.ts
+import WebSocket from 'ws';
+import type { SessionInfo, TaskOptions } from './openclaw-rpc.js';
+
+/**
+ * OpenClaw WebSocket RPC 客户端
+ * Gateway 默认监听在 ws://127.0.0.1:18789
+ */
+export class OpenClawRpcClient {
+  private ws: WebSocket | null = null;
+  private requestId = 0;
+  private pendingRequests = new Map<string, {
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+    timeout: NodeJS.Timeout;
+  }>();
+  private isConnected = false;
+
+  constructor(
+    gatewayUrl: string = `ws://127.0.0.1:18789`,
+    private token?: string,
+  ) {}
+
+  /**
+   * 连接到 OpenClaw Gateway
+   */
+  async connect(): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) return;
+    // WebSocket 连接逻辑...
+  }
+
+  /**
+   * 发送 RPC 调用
+   */
+  async call<T>(method: string, params?: unknown, timeoutMs = 30000): Promise<T> {
+    if (!this.isConnected || this.ws?.readyState !== WebSocket.OPEN) {
+      await this.connect();
+    }
+    // JSON-RPC 2.0 调用逻辑...
+  }
+
+  /**
+   * 执行任务计划
+   */
+  async executePlan(
+    planId: string,
+    steps: Array<{ action: string; params: Record<string, unknown> }>,
+    options?: TaskOptions,
+  ): Promise<{ taskId: string; status: string }> {
+    return this.call('tasks.create', {
+      type: 'multi_step',
+      planId,
+      steps,
+      sessionKey: options?.session ? this.buildSessionKey(options.session) : undefined,
+    });
+  }
+
+  /**
+   * 创建定时任务
+   */
+  async createCronTask(
+    expression: string,
+    task: { type: string; params: Record<string, unknown> },
+    options?: { timezone?: string; session?: SessionInfo; callback?: string },
+  ): Promise<{ taskId: string }> {
+    return this.call('cron.create', {
+      expression,
+      timezone: options?.timezone,
+      task,
+      sessionKey: options?.session ? this.buildSessionKey(options.session) : undefined,
+    });
+  }
+
+  /**
+   * 发送通知
+   */
+  async sendNotification(session: SessionInfo, message: string): Promise<void> {
+    await this.call('notification.send', {
+      sessionKey: this.buildSessionKey(session),
+      message,
+    });
+  }
+}
+
+// 单例导出
+export function getOpenClawRpcClient(): OpenClawRpcClient {
+  return new OpenClawRpcClient(config.openclaw.gatewayUrl, config.openclaw.apiKey);
 }
 ```
 

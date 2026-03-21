@@ -179,7 +179,7 @@ export class VectorMemoryStore {
     return must.length > 0 ? { must } : null;
   }
 
-  private toVectorMemory(id: string, payload: Record<string, unknown> | null | undefined, _score?: number): VectorMemory {
+  private toVectorMemory(id: string, payload: Record<string, unknown> | null | undefined, score?: number): VectorMemory {
     if (!payload) {
       return {
         id,
@@ -193,6 +193,7 @@ export class VectorMemoryStore {
           tags: [],
         },
         createdAt: new Date(),
+        score,
       };
     }
 
@@ -211,6 +212,7 @@ export class VectorMemoryStore {
       },
       createdAt: payload.createdAt ? new Date(payload.createdAt as string) : new Date(),
       expiresAt: payload.expiresAt ? new Date(payload.expiresAt as string) : undefined,
+      score,
     };
   }
 }
